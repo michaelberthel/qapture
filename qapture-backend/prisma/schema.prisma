@@ -1,0 +1,147 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                Int           @id @default(autoincrement())
+  azureAdObjectId   String        @unique @map("azure_ad_object_id") @db.NVarChar(255)
+  email             String        @db.NVarChar(255)
+  displayName       String        @map("display_name") @db.NVarChar(255)
+  role              String        @db.NVarChar(50) // Admin, ProjektQM, ProjektKoordinator, Mitarbeiter
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  
+  userTeams         UserTeam[]
+  evaluationsGiven  Evaluation[]  @relation("Evaluator")
+  evaluationsReceived Evaluation[] @relation("Evaluated")
+  
+  @@index([azureAdObjectId])
+  @@index([role])
+  @@map("users")
+}
+
+model Team {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.NVarChar(255)
+  description String?   @db.NVarChar(Max)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  
+  userTeams   UserTeam[]
+  teamCatalogs TeamCatalog[]
+  evaluations Evaluation[]
+  
+  @@map("teams")
+}
+
+model UserTeam {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  teamId    Int      @map("team_id")
+  isManager Boolean  @default(false) @map("is_manager")
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, teamId])
+  @@index([userId])
+  @@index([teamId])
+  @@map("user_teams")
+}
+
+model CriteriaCatalog {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.NVarChar(255)
+  description String?   @db.NVarChar(Max)
+  surveyJson  String    @map("survey_json") @db.NVarChar(Max)
+  version     Int       @default(1)
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  
+  teamCatalogs TeamCatalog[]
+  evaluations  Evaluation[]
+  
+  @@index([isActive])
+  @@map("criteria_catalogs")
+}
+
+model TeamCatalog {
+  id        Int      @id @default(autoincrement())
+  teamId    Int      @map("team_id")
+  catalogId Int      @map("catalog_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  catalog   CriteriaCatalog @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  
+  @@unique([teamId, catalogId])
+  @@map("team_catalogs")
+}
+
+model Evaluation {
+  id                 Int       @id @default(autoincrement())
+  evaluatedUserId    Int       @map("evaluated_user_id")
+  evaluatorUserId    Int       @map("evaluator_user_id")
+  teamId             Int       @map("team_id")
+  catalogId          Int       @map("catalog_id")
+  evaluationDate     DateTime  @map("evaluation_date")
+  prueftechnik       String?   @db.NVarChar(100)
+  surveyResults      String    @map("survey_results") @db.NVarChar(Max)
+  totalScore         Decimal?  @map("total_score") @db.Decimal(5, 2)
+  maxScore           Decimal?  @map("max_score") @db.Decimal(5, 2)
+  percentage         Decimal?  @db.Decimal(5, 2)
+  conversationContent String?  @map("conversation_content") @db.NVarChar(Max)
+  requiresAction     Boolean   @default(false) @map("requires_action")
+  actionReason       String?   @map("action_reason") @db.NVarChar(Max)
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  
+  evaluatedUser User    @relation("Evaluated", fields: [evaluatedUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  evaluator     User    @relation("Evaluator", fields: [evaluatorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  team          Team    @relation(fields: [teamId], references: [id])
+  catalog       CriteriaCatalog @relation(fields: [catalogId], references: [id])
+  emailLogs     EmailLog[]
+  
+  @@index([evaluatedUserId])
+  @@index([evaluatorUserId])
+  @@index([teamId])
+  @@index([evaluationDate])
+  @@map("evaluations")
+}
+
+model EmailTemplate {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.NVarChar(255)
+  subject   String   @db.NVarChar(500)
+  bodyHtml  String   @map("body_html") @db.NVarChar(Max)
+  variables String?  @db.NVarChar(Max)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  @@map("email_templates")
+}
+
+model EmailLog {
+  id            Int       @id @default(autoincrement())
+  evaluationId  Int       @map("evaluation_id")
+  recipientEmail String   @map("recipient_email") @db.NVarChar(255)
+  subject       String?   @db.NVarChar(500)
+  sentAt        DateTime  @default(now()) @map("sent_at")
+  status        String    @db.NVarChar(50) // sent, failed
+  errorMessage  String?   @map("error_message") @db.NVarChar(Max)
+  
+  evaluation    Evaluation @relation(fields: [evaluationId], references: [id])
+  
+  @@map("email_logs")
+}
