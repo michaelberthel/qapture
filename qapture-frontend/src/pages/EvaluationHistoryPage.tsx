@@ -115,7 +115,7 @@ export default function EvaluationHistoryPage() {
                             questionMeta[q.name] = {
                                 label: q.title || q.name,
                                 max: (q as any).rateMax || 0,
-                                page: q.page?.title || 'Allgemein'
+                                page: (q.page as any)?.title || 'Allgemein'
                             };
                         }
                     });
@@ -185,17 +185,38 @@ export default function EvaluationHistoryPage() {
             // 5. Results Table
             const tableBody: any[] = [];
 
-            // Filter relevant keys
+            // Helper to get comment
+            const getComment = (key: string) => {
+                // Try standard SurveyJS suffixes
+                let val = evalData[key + "-Comment"] || evalData[key + "Comment"];
+                if (val) return val;
+
+                // Try German "Begründung-" prefix seen in user data
+                val = evalData["Begründung-" + key] || evalData["Begründung_" + key];
+                if (val) return val;
+
+                // Try English "Comment-" prefix just in case
+                val = evalData["Comment-" + key] || evalData["Comment_" + key];
+                return val;
+            };
+
+            // Standard excluded keys
             const excludedKeys = ["Name", "Projekt", "Kriterienkatalog", "Datum", "Bewertername", "Punkte", "Erreichbare_Punkte", "Prozent", "EvaluatorEmail", "EvaluationDate", "EmployeeID", "EmployeeName", "EmployeeEmail", "Team"];
 
-            // Logic matching the clean structure: Object.keys + Meta lookup
             Object.keys(evalData).forEach(key => {
                 if (excludedKeys.includes(key) || typeof evalData[key] === 'object') return;
 
-                // Skip standalone comment fields to keep table clean (as per request)
-                if (key.endsWith('-Comment') || key.endsWith('Comment')) return;
+                // Skip standalone comment fields to keep table clean
+                const isCommentKey = key.endsWith("-Comment") ||
+                    key.endsWith("Comment") ||
+                    key.startsWith("Begründung-") ||
+                    key.startsWith("Begründung_") ||
+                    key.startsWith("Comment-") ||
+                    key.startsWith("Comment_");
 
-                // Try direct match or sanitized
+                if (isCommentKey) return;
+
+                // Resolve Meta
                 let meta = questionMeta[key];
                 if (!meta) {
                     const spaceKey = key.replace(/_/g, ' ');
@@ -203,23 +224,51 @@ export default function EvaluationHistoryPage() {
                     if (foundKey) meta = questionMeta[foundKey];
                 }
 
-                const questionText = meta ? meta.label : key.replace(/_/g, ' ');
+                let questionText = meta ? meta.label : key.replace(/_/g, ' ');
                 const answerValue = evalData[key];
                 const page = meta ? meta.page : '';
 
                 // Determine Score Column
                 let scoreText = "-";
+                let isTextAnswer = false;
+
                 if (meta && meta.max > 0) {
                     scoreText = `${answerValue} / ${meta.max}`;
                 } else if (typeof answerValue === 'number') {
                     scoreText = String(answerValue);
+                } else if (typeof answerValue === 'string' && answerValue.trim() !== "") {
+                    // It's a text answer (like PID or Anlass)
+                    // Append value to the label with a colon
+                    questionText = `${questionText}: ${answerValue}`;
+                    // Mark as text answer to apply styling
+                    isTextAnswer = true;
                 }
 
-                tableBody.push([
-                    page,
-                    questionText,
-                    scoreText
-                ]);
+                if (isTextAnswer) {
+                    tableBody.push([
+                        page,
+                        { content: questionText, styles: { fontStyle: 'bold' } },
+                        scoreText
+                    ]);
+                } else {
+                    tableBody.push([
+                        page,
+                        questionText,
+                        scoreText
+                    ]);
+                }
+
+                // Add Comment Row if exists
+                const comment = getComment(key);
+                if (comment) {
+                    tableBody.push([
+                        {
+                            content: `Anmerkung: ${comment}`,
+                            colSpan: 3,
+                            styles: { fontStyle: 'italic', textColor: 100, fontSize: 8, cellPadding: { top: 1, bottom: 2, left: 5 } }
+                        }
+                    ]);
+                }
             });
 
             // AutoTable Call
@@ -244,7 +293,7 @@ export default function EvaluationHistoryPage() {
                 },
                 didDrawPage: (data: any) => {
                     // Footer
-                    const pageCount = doc.internal.getNumberOfPages();
+                    const pageCount = (doc.internal as any).getNumberOfPages();
                     doc.setFontSize(8);
                     doc.setTextColor(150);
                     doc.text(`Seite ${pageCount}`, data.settings.margin.left, doc.internal.pageSize.height - 10);
@@ -308,8 +357,7 @@ export default function EvaluationHistoryPage() {
             field: 'datum',
             headerName: 'Datum',
             width: 170,
-            valueGetter: (value: any, row: any) => {
-                // v8: function(value, row)
+            valueGetter: (value: any) => {
                 if (!value) return null;
                 const [datePart, timePart] = value.split(', ');
                 if (!datePart || !timePart) return null;
@@ -317,9 +365,7 @@ export default function EvaluationHistoryPage() {
                 return new Date(`${year}-${month}-${day}T${timePart}`);
             },
             valueFormatter: (value: any) => {
-                // v8: function(value, row)
                 if (!value) return '';
-                // Check if valid date
                 if (!(value instanceof Date) || isNaN(value.getTime())) return value;
                 return new Intl.DateTimeFormat('de-DE', {
                     year: 'numeric', month: '2-digit', day: '2-digit',
@@ -372,76 +418,6 @@ export default function EvaluationHistoryPage() {
             )
         }
     ];
-
-    // German translation for DataGrid v6+
-    const germanLocaleText = {
-        // Root
-        noRowsLabel: 'Keine Ergebnisse.',
-        noResultsOverlayLabel: 'Keine Ergebnisse gefunden.',
-
-        // Toolbar
-        toolbarDensity: 'Zeilenhöhe',
-        toolbarDensityLabel: 'Zeilenhöhe',
-        toolbarDensityCompact: 'Kompakt',
-        toolbarDensityStandard: 'Standard',
-        toolbarDensityComfortable: 'Breit',
-
-        toolbarColumns: 'Spalten',
-        toolbarColumnsLabel: 'Spalten auswählen',
-
-        toolbarFilters: 'Filter',
-        toolbarFiltersLabel: 'Filter anzeigen',
-        toolbarFiltersTooltipHide: 'Filter verbergen',
-        toolbarFiltersTooltipShow: 'Filter anzeigen',
-        toolbarFiltersTooltipActive: (count: number) =>
-            count !== 1 ? `${count} aktive Filter` : `${count} aktiver Filter`,
-
-        toolbarQuickFilterPlaceholder: 'Suchen…',
-        toolbarQuickFilterLabel: 'Suchen',
-        toolbarQuickFilterDeleteIconLabel: 'Löschen',
-
-        toolbarExport: 'Exportieren',
-        toolbarExportLabel: 'Exportieren',
-        toolbarExportCSV: 'Als CSV herunterladen',
-        toolbarExportPrint: 'Drucken',
-        toolbarExportExcel: 'Als Excel herunterladen',
-
-        // Columns panel
-        columnsPanelTextFieldLabel: 'Spalte finden',
-        columnsPanelTextFieldPlaceholder: 'Spaltentitel',
-        columnsPanelDragIconLabel: 'Spalte neu ordnen',
-        columnsPanelShowAllButton: 'Alle anzeigen',
-        columnsPanelHideAllButton: 'Alle verbergen',
-
-        // Filter panel
-        filterPanelAddFilter: 'Filter hinzufügen',
-        filterPanelRemoveAll: 'Alle löschen',
-        filterPanelDeleteIconLabel: 'Löschen',
-        filterPanelLogicOperator: 'Logischer Operator',
-        filterPanelOperator: 'Operator',
-        filterPanelOperatorAnd: 'Und',
-        filterPanelOperatorOr: 'Oder',
-        filterPanelColumns: 'Spalten',
-        filterPanelInputLabel: 'Wert',
-        filterPanelInputPlaceholder: 'Wert filtern',
-
-        // Column menu
-        columnMenuLabel: 'Menü',
-        columnMenuShowColumns: 'Spalten anzeigen',
-        columnMenuManageColumns: 'Spalten verwalten',
-        columnMenuFilter: 'Filtern',
-        columnMenuHideColumn: 'Verbergen',
-        columnMenuUnsort: 'Sortierung aufheben',
-        columnMenuSortAsc: 'Aufsteigend sortieren',
-        columnMenuSortDesc: 'Absteigend sortieren',
-
-        // Pagination
-        MuiTablePagination: {
-            labelRowsPerPage: 'Zeilen pro Seite:',
-            labelDisplayedRows: ({ from, to, count }: any) =>
-                `${from}–${to} von ${count !== -1 ? count : `mehr als ${to}`}`,
-        }
-    };
 
     return (
         <Box sx={{ height: 600, width: '100%' }}>
