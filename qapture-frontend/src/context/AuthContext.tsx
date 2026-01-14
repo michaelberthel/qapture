@@ -22,53 +22,41 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Helper to fetch legacy data (Role & Teams)
-const fetchLegacyUserData = async (email: string, baseUser: User): Promise<User> => {
+import { personioApi } from '../services/personioApi';
+import type { UserTeam } from '../types/user';
+
+// Helper to fetch Personio data (Role & Teams)
+const fetchPersonioUserData = async (email: string, baseUser: User): Promise<User> => {
     const updatedUser = { ...baseUser };
     try {
-        const legacyUrl = import.meta.env.VITE_LEGACY_API_URL;
-        const legacyKey = import.meta.env.VITE_LEGACY_API_KEY;
+        // Fetch from new backend API (which integrates Personio & Overrides)
+        const employee = await personioApi.getUser(email);
 
-        if (legacyUrl && legacyKey) {
-            // A) Fetch Role (Position)
-            const roleResponse = await fetch(`${legacyUrl}/${legacyKey}/position?user=${email}`);
-            if (roleResponse.ok) {
-                const data = await roleResponse.json();
-                // Expected format: [{"position":"Admin"}]
-                if (Array.isArray(data) && data.length > 0 && data[0].position) {
-                    const legacyRole = data[0].position.trim();
-
-                    // Map Legacy Role to App Role
-                    if (legacyRole === 'Admin') updatedUser.role = 'Admin';
-                    else if (legacyRole === 'Projektqualitätsmanager') updatedUser.role = 'ProjektQM';
-                    else if (legacyRole === 'Projektkoordinator') updatedUser.role = 'ProjektKoordinator';
-                    // else keep 'Mitarbeiter'
-                }
+        if (employee) {
+            // Map Role
+            // Type assertion to ensure string matches union type if needed, 
+            // but backend returns compatible strings ('Admin', 'ProjektQM', etc)
+            if (['Admin', 'ProjektQM', 'ProjektKoordinator', 'Mitarbeiter'].includes(employee.role)) {
+                updatedUser.role = employee.role as User['role'];
             }
 
-            // B) Fetch Teams (if not Admin and not Mitarbeiter)
-            if (updatedUser.role === 'ProjektQM' || updatedUser.role === 'ProjektKoordinator') {
-                const teamResponse = await fetch(`${legacyUrl}/${legacyKey}/role?user=${email}`);
-                if (teamResponse.ok) {
-                    const teamData = await teamResponse.json();
-                    // Expected: [{"Projekt":"verbaneum"}, ...]
-                    if (Array.isArray(teamData)) {
-                        updatedUser.teams = teamData.map((t: any, index: number) => ({
-                            teamId: index + 1, // Temporary ID
-                            team: {
-                                id: index + 1,
-                                name: t.Projekt,
-                                description: 'Legacy Team'
-                            },
-                            isManager: true // Assume manager for assigned teams in these roles
-                        }));
-                        console.log('Fetched teams for', email, updatedUser.teams);
-                    }
-                }
+            // Map Teams
+            if (employee.teams && employee.teams.length > 0) {
+                updatedUser.teams = employee.teams.map((t, index) => ({
+                    teamId: index + 1, // Generate ID
+                    team: {
+                        id: index + 1,
+                        name: t.team.name,
+                        description: 'Personio Team'
+                    },
+                    isManager: true // Assume manager for assigned teams (previously only for QM/Coord)
+                }));
             }
+            console.log('Fetched Personio data for', email, updatedUser);
         }
     } catch (err) {
-        console.error('Failed to fetch legacy data for', email, err);
+        console.error('Failed to fetch Personio data for', email, err);
+        // Fallback or just keep basic user? Use basic.
     }
     return updatedUser;
 };
@@ -99,8 +87,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 // Optimistic update
                 setUser(basicUser);
 
-                // 2. Fetch role from Legacy API
-                const fullUser = await fetchLegacyUserData(activeAccount.username, basicUser);
+                // 2. Fetch role from Personio API
+                const fullUser = await fetchPersonioUserData(activeAccount.username, basicUser);
 
                 // Final update with Role/Teams
                 setUser(fullUser);
@@ -178,8 +166,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 role: 'Mitarbeiter'
             };
 
-            // Fetch real legacy data for this user
-            const fullSimulatedUser = await fetchLegacyUserData(email, simulatedBaseUser);
+            // Fetch real Personio data for this user
+            const fullSimulatedUser = await fetchPersonioUserData(email, simulatedBaseUser);
 
             setUser(fullSimulatedUser);
         } catch (err) {

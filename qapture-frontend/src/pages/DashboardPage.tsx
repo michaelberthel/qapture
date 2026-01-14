@@ -107,10 +107,13 @@ export default function DashboardPage() {
 
         // 1. Calculate Personal & Given (Unfiltered by dashboard filters, always user specific)
         const received = evaluations.filter(e =>
-            e.name === user.email || e.fullData?.surveyresults?.EmployeeEmail === user.email
+            e.name?.toLowerCase() === user.email?.toLowerCase() ||
+            e.fullData?.surveyresults?.EmployeeEmail?.toLowerCase() === user.email?.toLowerCase() ||
+            e.fullData?.surveyresults?.Email?.toLowerCase() === user.email?.toLowerCase()
         );
         const given = evaluations.filter(e =>
-            e.bewerter === user.email || e.fullData?.surveyresults?.EvaluatorEmail === user.email
+            e.bewerter?.toLowerCase() === user.email?.toLowerCase() ||
+            e.fullData?.surveyresults?.EvaluatorEmail?.toLowerCase() === user.email?.toLowerCase()
         );
 
         setReceivedMetrics(processStats(received));

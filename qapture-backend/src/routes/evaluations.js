@@ -12,40 +12,66 @@ router.get('/', async (req, res) => {
         // In a real app, this should come from a verified JWT token
         const userRole = req.headers['x-user-role'];
         const userEmail = req.headers['x-user-email'];
-        const userTeams = req.headers['x-user-teams'] ? JSON.parse(req.headers['x-user-teams']) : [];
+        // Parse teams safely
+        let userTeams = [];
+        try {
+            userTeams = req.headers['x-user-teams'] ? JSON.parse(req.headers['x-user-teams']) : [];
+        } catch (e) {
+            console.error('Error parsing x-user-teams header:', e);
+        }
 
-        console.log(`Fetching evaluations for: ${userEmail} (${userRole})`);
+        console.log(`[API] Fetching evaluations for: ${userEmail} (${userRole})`);
+        console.log(`[API] Teams header:`, req.headers['x-user-teams']);
+        console.log(`[API] Parsed Teams:`, userTeams);
 
         let query = {};
+
+        // Helper to escape regex special chars
+        const escapeRegExp = (string) => {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        };
 
         // Role-Based Access Control logic
         if (userRole === 'Admin') {
             // Admin sees all
             query = {};
         } else if (userRole === 'ProjektQM' || userRole === 'ProjektKoordinator') {
-            // Managers see their teams
+            // Managers see their teams OR their own evaluations regardless of team
             // The team name in MongoDB is usually in "surveyresults.Projekt"
-            // userTeams comes as array of strings (names) from frontend mapping
+
+            const orConditions = [];
+
+            // 1. Teams condition
             if (userTeams.length > 0) {
-                query = { "surveyresults.Projekt": { $in: userTeams } };
+                // Create case-insensitive regex for each team (substring match)
+                const teamRegexes = userTeams.map(team => new RegExp(escapeRegExp(team), 'i'));
+                orConditions.push({ "surveyresults.Projekt": { $in: teamRegexes } });
+            }
+
+            // 2. Own evaluations condition
+            // "Bewertername" match case-insensitive
+            if (userEmail) {
+                const emailRegex = new RegExp(`^${escapeRegExp(userEmail)}$`, 'i');
+                orConditions.push({ "surveyresults.Bewertername": { $regex: emailRegex } });
+            }
+
+            if (orConditions.length > 0) {
+                query = { $or: orConditions };
             } else {
-                // No teams assigned? Maybe see nothing or own?
-                // Let's safe default to nothing if no teams
+                // Should practically not happen if userEmail is set, but safe fallback
                 query = { _id: null };
             }
         } else {
             // Mitarbeiter sees only their own
             // Matching "surveyresults.Name" or "surveyresults.EmployeeEmail"
-            // The sample data had "Name": "email@domain.com" sometimes? 
-            // Or "Email": "..."? 
-            // Sample showed: "Name": "yunus.stubner@verbaneum.de" in surveyresults.
-            // But also "email": "..." in api response.
-            // Let's try to match Name or Email.
+            // Using case-insensitive regex to avoid mismatch (e.g. Thomas.Dietz vs thomas.dietz)
+            const emailRegex = new RegExp(`^${escapeRegExp(userEmail)}$`, 'i');
+
             query = {
                 $or: [
-                    { "surveyresults.Name": userEmail },
-                    { "surveyresults.EmployeeEmail": userEmail },
-                    { "surveyresults.Email": userEmail }
+                    { "surveyresults.Name": { $regex: emailRegex } },
+                    { "surveyresults.EmployeeEmail": { $regex: emailRegex } },
+                    { "surveyresults.Email": { $regex: emailRegex } }
                 ]
             };
         }

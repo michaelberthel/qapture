@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
 import evaluationRoutes from './routes/evaluations.js';
+import employeeRoutes from './routes/employees.js';
+import adminRoutes from './routes/admin.js';
 
 const app = express();
 const prisma = new PrismaClient();
@@ -26,6 +28,8 @@ app.get('/health', (req, res) => {
 
 // API Routes
 app.use('/api/evaluations', evaluationRoutes);
+app.use('/api/employees', employeeRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.get('/api', (req, res) => {
     res.json({

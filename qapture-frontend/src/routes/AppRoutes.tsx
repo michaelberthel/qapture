@@ -7,6 +7,7 @@ import EvaluationsPage from '../pages/EvaluationsPage';
 import NewEvaluationPage from '../pages/NewEvaluationPage';
 import EvaluationHistoryPage from '../pages/EvaluationHistoryPage';
 import { Box, CircularProgress } from '@mui/material';
+import AdminPage from '../pages/AdminPage';
 
 function ProtectedRoute() {
     const { user, isLoading } = useAuth();
@@ -41,8 +42,10 @@ export default function AppRoutes() {
                     <Route path="/my-evaluations" element={<EvaluationHistoryPage />} />
                     <Route path="/history" element={<EvaluationHistoryPage />} />
 
+
+
                     <Route path="/teams" element={<div>Teams Page (Coming Soon)</div>} />
-                    <Route path="/admin" element={<div>Admin Page (Coming Soon)</div>} />
+                    <Route path="/admin" element={<AdminPage />} />
                 </Route>
             </Route>
 

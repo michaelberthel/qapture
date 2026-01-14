@@ -14,8 +14,8 @@ import {
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { legacyApi } from '../services/legacyApi';
-import type { LegacyEmployee, LegacyCatalog } from '../types/legacy';
+import { personioApi, type Employee } from '../services/personioApi';
+import { adminApi, type Catalog } from '../services/adminApi';
 
 export default function EvaluationsPage() {
     const { user } = useAuth();
@@ -23,11 +23,11 @@ export default function EvaluationsPage() {
 
     // State
     const [selectedTeam, setSelectedTeam] = useState<string>('');
-    const [employees, setEmployees] = useState<LegacyEmployee[]>([]);
-    const [catalogs, setCatalogs] = useState<LegacyCatalog[]>([]);
+    const [employees, setEmployees] = useState<Employee[]>([]);
+    const [catalogs, setCatalogs] = useState<Catalog[]>([]);
 
     const [selectedEmployeeId, setSelectedEmployeeId] = useState<number | ''>('');
-    const [selectedCatalogId, setSelectedCatalogId] = useState<number | ''>('');
+    const [selectedCatalogId, setSelectedCatalogId] = useState<string | ''>(''); // Mongo ID is string
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -50,12 +50,27 @@ export default function EvaluationsPage() {
             setLoading(true);
             setError(null);
             try {
-                const [empData, catData] = await Promise.all([
-                    legacyApi.getEmployees(selectedTeam),
-                    legacyApi.getCatalogs(selectedTeam)
+                // Fetch all data (optimization: could happen once on mount, but simple here)
+                // Filter locally by team
+                const [allEmps, allCats] = await Promise.all([
+                    personioApi.getEmployees(),
+                    adminApi.getCatalogs()
                 ]);
-                setEmployees(empData);
-                setCatalogs(catData);
+
+                // Filter Employees: check recursively or rawTeams?
+                // rawTeams is array of strings. e.rawTeams.includes(selectedTeam)
+                const teamEmps = allEmps.filter(e => e.rawTeams && e.rawTeams.includes(selectedTeam));
+
+                // Filter Catalogs: c.projects.includes(selectedTeam)
+                const teamCats = allCats.filter(c => c.projects && c.projects.includes(selectedTeam));
+
+                setEmployees(teamEmps);
+                setCatalogs(teamCats);
+
+                // Reset selections
+                setSelectedEmployeeId('');
+                setSelectedCatalogId('');
+
             } catch (err) {
                 console.error(err);
                 setError('Fehler beim Laden der Daten.');
@@ -69,14 +84,15 @@ export default function EvaluationsPage() {
 
     const handleStartEvaluation = () => {
         const employee = employees.find(e => e.id === selectedEmployeeId);
-        const catalog = catalogs.find(c => c.id === selectedCatalogId);
+        const catalog = catalogs.find(c => c._id === selectedCatalogId);
 
         if (employee && catalog) {
             navigate('/evaluation/new', {
                 state: {
-                    employee,
-                    catalog,
-                    teamName: selectedTeam
+                    newEmployee: employee,
+                    newCatalog: catalog,
+                    teamName: selectedTeam,
+                    mode: 'new'
                 }
             });
         }
@@ -125,11 +141,11 @@ export default function EvaluationsPage() {
                                         label="Mitarbeiter"
                                         onChange={(e) => setSelectedEmployeeId(e.target.value as number)}
                                     >
-                                        {employees.map((emp) => (
+                                        {employees.length > 0 ? employees.map((emp) => (
                                             <MenuItem key={emp.id} value={emp.id}>
-                                                {emp.name}
+                                                {emp.fullName}
                                             </MenuItem>
-                                        ))}
+                                        )) : <MenuItem disabled>Keine Mitarbeiter im Team</MenuItem>}
                                     </Select>
                                 </FormControl>
                             </Grid>
@@ -140,13 +156,13 @@ export default function EvaluationsPage() {
                                     <Select
                                         value={selectedCatalogId}
                                         label="Kriterienkatalog"
-                                        onChange={(e) => setSelectedCatalogId(e.target.value as number)}
+                                        onChange={(e) => setSelectedCatalogId(e.target.value as string)}
                                     >
-                                        {catalogs.map((cat) => (
-                                            <MenuItem key={cat.id} value={cat.id}>
-                                                {cat.Name}
+                                        {catalogs.length > 0 ? catalogs.map((cat) => (
+                                            <MenuItem key={cat._id} value={cat._id}>
+                                                {cat.name}
                                             </MenuItem>
-                                        ))}
+                                        )) : <MenuItem disabled>Keine Kataloge zugewiesen</MenuItem>}
                                     </Select>
                                 </FormControl>
                             </Grid>
