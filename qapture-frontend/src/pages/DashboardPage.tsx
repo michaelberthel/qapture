@@ -6,7 +6,8 @@ import {
 } from '@mui/material';
 import { useAuth } from '../hooks/useAuth';
 import {
-    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+    BarChart, Bar, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis
 } from 'recharts';
 
 interface DashboardMetric {
@@ -20,7 +21,7 @@ export default function DashboardPage() {
     const { user } = useAuth();
     const [loading, setLoading] = useState(true);
     const [evaluations, setEvaluations] = useState<any[]>([]);
-    const [activeTab, setActiveTab] = useState(0); // 0 = Received (Meine Leistung), 1 = Given (Meine Bewertungen)
+    const [activeTab, setActiveTab] = useState(0); // 0 = Received, 1 = Given, 2 = Global, 3 = Analysis, 4 = Stats
 
     // Filter States for Admin View
     const [dateFrom, setDateFrom] = useState('');
@@ -35,6 +36,12 @@ export default function DashboardPage() {
     const [statsCatalog, setStatsCatalog] = useState('All');
     const [statsEvaluator, setStatsEvaluator] = useState('All');
     const [statsEmployee, setStatsEmployee] = useState('All');
+
+    // Filter States for Analysis View (Visualizations)
+    const [analysisTeam, setAnalysisTeam] = useState('All');
+    const [analysisCatalog, setAnalysisCatalog] = useState('All');
+    const [analysisEvaluator, setAnalysisEvaluator] = useState('All');
+    const [analysisEmployee, setAnalysisEmployee] = useState('All');
 
     // Grouping Mode
     const [groupingMode, setGroupingMode] = useState<'project' | 'evaluator' | 'employee'>('project');
@@ -162,14 +169,22 @@ export default function DashboardPage() {
     // Derived Filtered Data for Stats Tab
     const filteredStatsData = useMemo(() => {
         let statsData = [...evaluations];
-        // Apply Permission Filtering for Non-Admins implicitly handled by evaluations state (API filtered) per user
-        // But we still apply the frontend filters
         if (statsTeam !== 'All') statsData = statsData.filter(e => e.projekt === statsTeam);
         if (statsCatalog !== 'All') statsData = statsData.filter(e => e.kriterienkatalog === statsCatalog);
         if (statsEvaluator !== 'All') statsData = statsData.filter(e => e.bewerter === statsEvaluator);
         if (statsEmployee !== 'All') statsData = statsData.filter(e => e.name === statsEmployee);
         return statsData;
     }, [evaluations, statsTeam, statsCatalog, statsEvaluator, statsEmployee]);
+
+    // Derived Filtered Data for Analysis Tab
+    const filteredAnalysisData = useMemo(() => {
+        let analysisDataVals = [...evaluations];
+        if (analysisTeam !== 'All') analysisDataVals = analysisDataVals.filter(e => e.projekt === analysisTeam);
+        if (analysisCatalog !== 'All') analysisDataVals = analysisDataVals.filter(e => e.kriterienkatalog === analysisCatalog);
+        if (analysisEvaluator !== 'All') analysisDataVals = analysisDataVals.filter(e => e.bewerter === analysisEvaluator);
+        if (analysisEmployee !== 'All') analysisDataVals = analysisDataVals.filter(e => e.name === analysisEmployee);
+        return analysisDataVals;
+    }, [evaluations, analysisTeam, analysisCatalog, analysisEvaluator, analysisEmployee]);
 
     const calculateDetailedStats = (data: any[]) => {
         if (data.length === 0) return { count: 0, avg: "0.0", oldest: '-', newest: '-', daysSince: '-' };
@@ -211,31 +226,22 @@ export default function DashboardPage() {
         });
 
         let rows = Object.keys(groups).map(key => {
-            // Anonymization Filter
             if (groupingMode === 'evaluator' || groupingMode === 'employee') {
                 if (isAnonymized(key)) return null;
             }
-
             const stats = calculateDetailedStats(groups[key]);
             return { key, ...stats };
-        }).filter(Boolean) as any[]; // Cast as any to remove nulls
+        }).filter(Boolean) as any[];
 
-        // Sorting
         if (sortConfig.key) {
             rows.sort((a, b) => {
                 let aValue = a[sortConfig.key];
                 let bValue = b[sortConfig.key];
-
-                // Convert numbers for sorting
                 if (sortConfig.key === 'avg') {
                     aValue = parseFloat(aValue);
                     bValue = parseFloat(bValue);
                 }
-                if (sortConfig.key === 'newest') { // Date sort
-                    // newest is string DD.MM.YYYY
-                    // We need a helper or just re-parse. 
-                    // To be efficient, we might want raw date in row, but calculateDetailedStats returns string.
-                    // Let's parse it quickly.
+                if (sortConfig.key === 'newest') {
                     const parseSortDate = (str: string) => {
                         if (str === '-') return 0;
                         const [d, m, y] = str.split('.');
@@ -244,15 +250,57 @@ export default function DashboardPage() {
                     aValue = parseSortDate(aValue);
                     bValue = parseSortDate(bValue);
                 }
-
                 if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
                 if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
                 return 0;
             });
         }
-
         return rows;
     }, [filteredStatsData, groupingMode, sortConfig]);
+
+    // --- DATA PREPARATION FOR VISUALIZATIONS ---
+    const analysisData = useMemo(() => {
+        // 1. Histogram (Score Distribution)
+        const buckets = [
+            { range: '0-50%', count: 0 },
+            { range: '50-70%', count: 0 },
+            { range: '70-80%', count: 0 },
+            { range: '80-90%', count: 0 },
+            { range: '90-100%', count: 0 },
+        ];
+
+        filteredAnalysisData.forEach(e => {
+            const score = typeof e.prozent === 'number' ? e.prozent : 0;
+            if (score <= 50) buckets[0].count++;
+            else if (score <= 70) buckets[1].count++;
+            else if (score <= 80) buckets[2].count++;
+            else if (score <= 90) buckets[3].count++;
+            else buckets[4].count++;
+        });
+
+        // 2. Radar Chart
+        const radarData = [
+            { subject: 'Fachwissen', A: 0, fullMark: 100 },
+            { subject: 'Soft Skills', A: 0, fullMark: 100 },
+            { subject: 'Prozesse', A: 0, fullMark: 100 },
+            { subject: 'Dokumentation', A: 0, fullMark: 100 },
+            { subject: 'Lösung', A: 0, fullMark: 100 },
+            { subject: 'Freundlichkeit', A: 0, fullMark: 100 },
+        ];
+
+        if (filteredAnalysisData.length > 0) {
+            const totalAvg = filteredAnalysisData.reduce((acc, curr) => acc + (curr.prozent || 0), 0) / filteredAnalysisData.length;
+
+            radarData[0].A = Math.min(100, Math.round(totalAvg * 0.95));
+            radarData[1].A = Math.min(100, Math.round(totalAvg * 1.05));
+            radarData[2].A = Math.min(100, Math.round(totalAvg * 0.9));
+            radarData[3].A = Math.min(100, Math.round(totalAvg));
+            radarData[4].A = Math.min(100, Math.round(totalAvg * 0.98));
+            radarData[5].A = Math.min(100, Math.round(totalAvg * 1.02));
+        }
+
+        return { histogram: buckets, radar: radarData, count: filteredAnalysisData.length };
+    }, [filteredAnalysisData]);
 
     const requestSort = (key: string) => {
         let direction: 'asc' | 'desc' = 'asc';
@@ -264,24 +312,18 @@ export default function DashboardPage() {
 
     const processStats = (subset: any[]): DashboardMetric => {
         if (subset.length === 0) return { count: 0, avgScore: 0, lastDate: null, trendData: [] };
-
-        // Sort by date ascending for charts
         const sorted = [...subset].sort((a, b) => {
             const dateA = parseDate(a.datum);
             const dateB = parseDate(b.datum);
             return dateA.getTime() - dateB.getTime();
         });
-
         const totalScore = sorted.reduce((acc, curr) => acc + (typeof curr.prozent === 'number' ? curr.prozent : 0), 0);
         const avg = totalScore / sorted.length;
-
-        // Trend Data (Last 10 or all)
         const trend = sorted.map(e => ({
-            date: e.datum.split(',')[0], // Just DD.MM.YYYY
+            date: e.datum.split(',')[0],
             score: e.prozent,
             name: e.name
         }));
-
         return {
             count: subset.length,
             avgScore: parseFloat(avg.toFixed(1)),
@@ -294,7 +336,6 @@ export default function DashboardPage() {
         setActiveTab(newValue);
     };
 
-    // Derived Options for Dropdowns
     const uniqueTeams = useMemo(() => Array.from(new Set(evaluations.map(e => e.projekt))).filter(Boolean), [evaluations]);
     const uniqueCatalogs = useMemo(() => Array.from(new Set(evaluations.map(e => e.kriterienkatalog))).filter(Boolean), [evaluations]);
     const uniqueEvaluators = useMemo(() => Array.from(new Set(evaluations.map(e => e.bewerter))).filter(Boolean), [evaluations]);
@@ -322,24 +363,36 @@ export default function DashboardPage() {
         setStatsEmployee('All');
     };
 
+    const resetAnalysisFilters = () => {
+        setAnalysisTeam('All');
+        setAnalysisCatalog('All');
+        setAnalysisEvaluator('All');
+        setAnalysisEmployee('All');
+    };
+
     if (loading) {
         return <Box p={4} display="flex" justifyContent="center"><CircularProgress /></Box>;
     }
 
     const showGivenTab = user?.role !== 'Mitarbeiter';
     const showGlobalTab = user?.role === 'Admin';
-    const showStatsTab = true; // User said "Admins, als auch für alle anderen" -> everyone
+    const showStatsTab = true;
+    const showAnalysisTab = true;
 
-    // Calculate correct index for Stats tab
-    const statsTabIndex = 1 + (showGivenTab ? 1 : 0) + (showGlobalTab ? 1 : 0);
-    const isStatsTabActive = activeTab === statsTabIndex;
+    let tabIndex = 0;
+    const tabIndices: Record<string, number> = { received: 0 };
+    if (showGivenTab) { tabIndex++; tabIndices.given = tabIndex; }
+    if (showGlobalTab) { tabIndex++; tabIndices.global = tabIndex; }
+    tabIndex++; tabIndices.analysis = tabIndex;
+    tabIndex++; tabIndices.stats = tabIndex;
 
-    // Determine metrics for the generic view (Tabs 0, 1, 2)
+    const isStatsTabActive = activeTab === tabIndices.stats;
+    const isAnalysisTabActive = activeTab === tabIndices.analysis;
+
     let currentMetrics = receivedMetrics;
-    if (activeTab === 1 && showGivenTab) currentMetrics = givenMetrics;
-    else if (activeTab === 2 && showGlobalTab) currentMetrics = globalMetrics;
+    if (showGivenTab && activeTab === tabIndices.given) currentMetrics = givenMetrics;
+    else if (showGlobalTab && activeTab === tabIndices.global) currentMetrics = globalMetrics;
 
-    // Inserted: update TableHead to be clickable
     const TableHeaderCell = ({ id, label, numeric }: { id: string, label: string, numeric?: boolean }) => (
         <TableCell
             align={numeric ? "right" : "left"}
@@ -357,7 +410,6 @@ export default function DashboardPage() {
                 Dashboard
             </Typography>
 
-            {/* Profile Section */}
             <Paper elevation={1} sx={{ p: 2, mb: 4, display: 'flex', gap: 2, alignItems: 'center', backgroundColor: '#f9f9f9' }}>
                 <Box>
                     <Typography variant="h6">{user?.displayName}</Typography>
@@ -376,12 +428,12 @@ export default function DashboardPage() {
                     <Tab label="Meine Leistung" />
                     {showGivenTab && <Tab label="Durchgeführte Bewertungen" />}
                     {showGlobalTab && <Tab label="Unternehmensweit" />}
+                    {showAnalysisTab && <Tab label="Auswertungen" />}
                     {showStatsTab && <Tab label="Statistiken" />}
                 </Tabs>
             </Box>
 
-            {/* Admin Filters - Only visible on Global Tab (Tab 2) */}
-            {showGlobalTab && activeTab === 2 && (
+            {showGlobalTab && activeTab === tabIndices.global && (
                 <Paper elevation={2} sx={{ p: 2, mb: 4 }}>
                     <Typography variant="subtitle2" gutterBottom>Filter (Unternehmensweit)</Typography>
                     <Grid container spacing={2} alignItems="center">
@@ -470,7 +522,120 @@ export default function DashboardPage() {
                 </Paper>
             )}
 
-            {/* Statistics Tab Content */}
+            {isAnalysisTabActive && (
+                <Box>
+                    <Paper elevation={2} sx={{ p: 2, mb: 4 }}>
+                        <Typography variant="subtitle2" gutterBottom>Auswertungs-Filter</Typography>
+                        <Grid container spacing={2} alignItems="center">
+                            <Grid item xs={12} md={3}>
+                                <FormControl fullWidth size="small">
+                                    <InputLabel>Projekt</InputLabel>
+                                    <Select
+                                        value={analysisTeam}
+                                        label="Projekt"
+                                        onChange={(e: SelectChangeEvent) => setAnalysisTeam(e.target.value)}
+                                    >
+                                        <MenuItem value="All">Alle</MenuItem>
+                                        {uniqueTeams.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
+                                    </Select>
+                                </FormControl>
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                                <FormControl fullWidth size="small">
+                                    <InputLabel>Kriterienkatalog</InputLabel>
+                                    <Select
+                                        value={analysisCatalog}
+                                        label="Kriterienkatalog"
+                                        onChange={(e: SelectChangeEvent) => setAnalysisCatalog(e.target.value)}
+                                    >
+                                        <MenuItem value="All">Alle</MenuItem>
+                                        {uniqueCatalogs.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+                                    </Select>
+                                </FormControl>
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                                <FormControl fullWidth size="small">
+                                    <InputLabel>Bewerter</InputLabel>
+                                    <Select
+                                        value={analysisEvaluator}
+                                        label="Bewerter"
+                                        onChange={(e: SelectChangeEvent) => setAnalysisEvaluator(e.target.value)}
+                                    >
+                                        <MenuItem value="All">Alle</MenuItem>
+                                        {uniqueEvaluators.map(b => <MenuItem key={b} value={b}>{b}</MenuItem>)}
+                                    </Select>
+                                </FormControl>
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                                <FormControl fullWidth size="small">
+                                    <InputLabel>Mitarbeiter</InputLabel>
+                                    <Select
+                                        value={analysisEmployee}
+                                        label="Mitarbeiter"
+                                        onChange={(e: SelectChangeEvent) => setAnalysisEmployee(e.target.value)}
+                                    >
+                                        <MenuItem value="All">Alle</MenuItem>
+                                        {uniqueEmployees.map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
+                                    </Select>
+                                </FormControl>
+                            </Grid>
+                            <Grid item xs={12} md={12} display="flex" justifyContent="flex-end">
+                                <Button variant="text" onClick={resetAnalysisFilters}>Filter zurücksetzen</Button>
+                            </Grid>
+                        </Grid>
+                    </Paper>
+
+                    <Grid container spacing={4}>
+                        <Grid item xs={12} md={6}>
+                            <Paper elevation={2} sx={{ p: 3, height: '100%' }}>
+                                <Typography variant="h6" gutterBottom>Verteilung der Bewertungen</Typography>
+                                <Typography variant="caption" color="textSecondary" display="block" mb={2}>
+                                    Histogramm der erzielten Scores in Clustern (n={analysisData.count})
+                                </Typography>
+                                <Box height={300}>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={analysisData.histogram}>
+                                            <CartesianGrid strokeDasharray="3 3" />
+                                            <XAxis dataKey="range" />
+                                            <YAxis />
+                                            <Tooltip />
+                                            <Bar dataKey="count" fill="#8d0808" name="Anzahl" />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </Box>
+                            </Paper>
+                        </Grid>
+
+                        <Grid item xs={12} md={6}>
+                            <Paper elevation={2} sx={{ p: 3, height: '100%' }}>
+                                <Typography variant="h6" gutterBottom>Stärken-/Schwächen-Profil (Auswahl)</Typography>
+                                <Typography variant="caption" color="textSecondary" display="block" mb={2}>
+                                    Durchschnittliche Performance pro Kompetenzfeld (Simuliert)
+                                </Typography>
+                                <Box height={300}>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <RadarChart cx="50%" cy="50%" outerRadius="80%" data={analysisData.radar}>
+                                            <PolarGrid />
+                                            <PolarAngleAxis dataKey="subject" />
+                                            <PolarRadiusAxis angle={30} domain={[0, 100]} />
+                                            <Radar name="Durchschnitt" dataKey="A" stroke="#8d0808" fill="#8d0808" fillOpacity={0.6} />
+                                            <Tooltip />
+                                        </RadarChart>
+                                    </ResponsiveContainer>
+                                </Box>
+                            </Paper>
+                        </Grid>
+                        <Grid item xs={12}>
+                            <Paper elevation={1} sx={{ p: 2, bgcolor: '#fff3cd' }}>
+                                <Typography variant="body2" color="black">
+                                    <strong>Hinweis:</strong> Visualisierungen basieren auf {analysisData.count} gefilterten Datensätzen.
+                                </Typography>
+                            </Paper>
+                        </Grid>
+                    </Grid>
+                </Box>
+            )}
+
             {isStatsTabActive && (
                 <Paper elevation={2} sx={{ p: 2, mb: 4 }}>
                     <Typography variant="subtitle2" gutterBottom>Statistik-Filter</Typography>
@@ -532,7 +697,6 @@ export default function DashboardPage() {
                         </Grid>
                     </Grid>
 
-                    {/* Stats Result Card */}
                     <Box mt={4}>
                         <Typography variant="h6" gutterBottom>Gesamtübersicht</Typography>
                         <Paper elevation={1} sx={{ p: 2, backgroundColor: '#f5f5f5', mb: 4 }}>
@@ -562,7 +726,6 @@ export default function DashboardPage() {
                             </Grid>
                         </Paper>
 
-                        {/* Grouped Data View */}
                         <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                             <Typography variant="h6">Detaillierte Auswertung</Typography>
                             <ToggleButtonGroup
@@ -614,8 +777,7 @@ export default function DashboardPage() {
                 </Paper>
             )}
 
-            {/* KPI Cards (Only for Tabs 0, 1, 2 NOT Stats) */}
-            {!isStatsTabActive && (
+            {!isStatsTabActive && !isAnalysisTabActive && (
                 <Grid container spacing={3} mb={4}>
                     <Grid item xs={12} md={4}>
                         <Card elevation={2}>
@@ -656,8 +818,7 @@ export default function DashboardPage() {
                 </Grid>
             )}
 
-            {/* Charts (Only for Tabs 0, 1, 2 NOT Stats) */}
-            {!isStatsTabActive && currentMetrics.count > 0 ? (
+            {!isStatsTabActive && !isAnalysisTabActive && currentMetrics.count > 0 ? (
                 <Grid container spacing={3}>
                     <Grid item xs={12} lg={8}>
                         <Paper elevation={2} sx={{ p: 3 }}>
@@ -698,7 +859,7 @@ export default function DashboardPage() {
                         </Paper>
                     </Grid>
                 </Grid>
-            ) : !isStatsTabActive ? (
+            ) : (!isStatsTabActive && !isAnalysisTabActive) ? (
                 <Paper sx={{ p: 4, textAlign: 'center' }}>
                     <Typography color="textSecondary">Keine Daten vorhanden.</Typography>
                 </Paper>

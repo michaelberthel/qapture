@@ -1,0 +1,177 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        --background: 0 0% 100%;
+        --foreground: 222.2 84% 4.9%;
+
+        --card: 0 0% 100%;
+        --card-foreground: 222.2 84% 4.9%;
+
+        --popover: 0 0% 100%;
+        --popover-foreground: 222.2 84% 4.9%;
+
+        --primary: 360 89% 29%;
+        /* #8d0808 - Verbaneum Red */
+        --primary-foreground: 210 40% 98%;
+
+        --secondary: 210 40% 96.1%;
+        --secondary-foreground: 222.2 47.4% 11.2%;
+
+        --muted: 210 40% 96.1%;
+        --muted-foreground: 215.4 16.3% 46.9%;
+
+        --accent: 210 40% 96.1%;
+        --accent-foreground: 222.2 47.4% 11.2%;
+
+        --destructive: 0 84.2% 60.2%;
+        --destructive-foreground: 210 40% 98%;
+
+        --border: 214.3 31.8% 91.4%;
+        --input: 214.3 31.8% 91.4%;
+        --ring: 222.2 84% 4.9%;
+
+        --radius: 0.5rem;
+    }
+
+    .dark {
+        --background: 222.2 84% 4.9%;
+        --foreground: 210 40% 98%;
+
+        --card: 222.2 84% 4.9%;
+        --card-foreground: 210 40% 98%;
+
+        --popover: 222.2 84% 4.9%;
+        --popover-foreground: 210 40% 98%;
+
+        --primary: 210 40% 98%;
+        --primary-foreground: 222.2 47.4% 11.2%;
+
+        --secondary: 217.2 32.6% 17.5%;
+        --secondary-foreground: 210 40% 98%;
+
+        --muted: 217.2 32.6% 17.5%;
+        --muted-foreground: 215 20.2% 65.1%;
+
+        --accent: 217.2 32.6% 17.5%;
+        --accent-foreground: 210 40% 98%;
+
+        --destructive: 0 62.8% 30.6%;
+        --destructive-foreground: 210 40% 98%;
+
+        --border: 217.2 32.6% 17.5%;
+        --input: 217.2 32.6% 17.5%;
+        --ring: 212.7 26.8% 83.9%;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+
+    body {
+        @apply bg-background text-foreground;
+    }
+}
+
+/* SurveyJS Overrides */
+
+/* Hide SurveyJS default decorators to prevent duplicates */
+.sd-item__decorator {
+    display: none !important;
+}
+
+/* --- CHECKBOXES --- */
+.sd-root-modern input[type="checkbox"] {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    width: 20px !important;
+    height: 20px !important;
+    border: 2px solid hsl(var(--primary)) !important;
+    border-radius: 4px !important;
+    background-color: white !important;
+    margin-right: 8px !important;
+    cursor: pointer !important;
+    position: relative;
+    vertical-align: sub;
+}
+
+.sd-root-modern input[type="checkbox"]:checked {
+    background-color: hsl(var(--primary)) !important;
+    border-color: hsl(var(--primary)) !important;
+    background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z'/%3e%3c/svg%3e");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+}
+
+/* --- RADIO BUTTONS --- */
+.sd-root-modern input[type="radio"] {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    width: 20px !important;
+    height: 20px !important;
+    border: 2px solid hsl(var(--primary)) !important;
+    border-radius: 50% !important;
+    background-color: white !important;
+    margin-right: 8px !important;
+    cursor: pointer !important;
+    position: relative;
+    vertical-align: sub;
+}
+
+.sd-root-modern input[type="radio"]:checked {
+    background-color: white !important;
+    border-color: hsl(var(--primary)) !important;
+    background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='%238d0808' xmlns='http://www.w3.org/2000/svg'%3e%3ccircle cx='8' cy='8' r='5'/%3e%3c/svg%3e");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+}
+
+
+/* --- TEXT INPUTS & TEXTAREAS --- */
+.sd-input,
+.sd-comment {
+    border: 1px solid hsl(var(--primary)) !important;
+    background-color: white !important;
+    color: hsl(var(--foreground)) !important;
+    border-radius: var(--radius) !important;
+    padding: 8px !important;
+}
+
+.sd-input:focus,
+.sd-comment:focus {
+    box-shadow: 0 0 0 2px hsl(var(--primary) / 0.2) !important;
+    outline: none !important;
+}
+
+.sd-selectbase__item .sd-item__control-label {
+    display: flex;
+    align-items: center;
+}
+
+/* --- HIGHLIGHTING --- */
+/* Rating/Likert Scale Selected State */
+.sd-rating__item--selected .sd-rating__item-text {
+    background-color: hsl(var(--primary)) !important;
+    color: hsl(var(--primary-foreground)) !important;
+    border-color: hsl(var(--primary)) !important;
+    font-weight: bold;
+}
+
+/* General Selection Highlight (Checkbox/Radio Labels) */
+.sd-item--checked .sd-item__control-label {
+    background-color: hsl(var(--primary) / 0.1) !important;
+    border-radius: var(--radius);
+    color: hsl(var(--primary)) !important;
+    font-weight: 600;
+}
+
+/* Hover Effects */
+.sd-item:hover .sd-item__control-label {
+    background-color: hsl(var(--muted)) !important;
+}
