@@ -1,0 +1,12 @@
+﻿src/components/layout/AppLayout.tsx(34,80): error TS6133: 'Chip' is declared but its value is never read.
+src/context/AuthContext.tsx(5,1): error TS6133: 'AccountInfo' is declared but its value is never read.
+src/context/AuthContext.tsx(8,1): error TS6133: 'apiClient' is declared but its value is never read.
+src/context/AuthContext.tsx(26,1): error TS6133: 'UserTeam' is declared but its value is never read.
+src/context/AuthContext.tsx(65,33): error TS6133: 'inProgress' is declared but its value is never read.
+src/pages/AdminPage.tsx(49,12): error TS6133: 'empError' is declared but its value is never read.
+src/pages/AdminPage.tsx(61,12): error TS6133: 'teamLoading' is declared but its value is never read.
+src/pages/AdminPage.tsx(62,12): error TS6133: 'teamError' is declared but its value is never read.
+src/pages/AdminPage.tsx(68,12): error TS6133: 'catLoading' is declared but its value is never read.
+src/pages/AdminPage.tsx(69,12): error TS6133: 'catError' is declared but its value is never read.
+src/pages/AdminPage.tsx(264,17): error TS6133: 'parsed' is declared but its value is never read.
+src/pages/AdminPage.tsx(355,51): error TS6133: 'e' is declared but its value is never read.

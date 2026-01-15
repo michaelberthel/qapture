@@ -2,10 +2,10 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useMsal } from '@azure/msal-react';
 import { InteractionRequiredAuthError } from '@azure/msal-browser';
-import type { AccountInfo } from '@azure/msal-browser';
+
 import { loginRequest } from '../config/msalConfig';
 import type { User } from '../types/user';
-import apiClient from '../services/api';
+
 
 interface AuthContextType {
     user: User | null;
@@ -23,7 +23,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 import { personioApi } from '../services/personioApi';
-import type { UserTeam } from '../types/user';
+
 
 // Helper to fetch Personio data (Role & Teams)
 const fetchPersonioUserData = async (email: string, baseUser: User): Promise<User> => {
@@ -62,7 +62,7 @@ const fetchPersonioUserData = async (email: string, baseUser: User): Promise<Use
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-    const { instance, accounts, inProgress } = useMsal();
+    const { instance, accounts } = useMsal();
     const [user, setUser] = useState<User | null>(null);
     const [originalUser, setOriginalUser] = useState<User | null>(null); // For impersonation
     const [isLoading, setIsLoading] = useState(true);

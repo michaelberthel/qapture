@@ -129,7 +129,6 @@ export default function DashboardPage() {
                 filtered = filtered.filter(e => parseDate(e.datum) >= dFrom);
             }
             if (dateTo) {
-                const dTo = new Date(dateTo);
                 // Set to End of Day
                 const dToTime = new Date(dateTo);
                 dToTime.setHours(23, 59, 59, 999);
@@ -173,7 +172,7 @@ export default function DashboardPage() {
     }, [evaluations, statsTeam, statsCatalog, statsEvaluator, statsEmployee]);
 
     const calculateDetailedStats = (data: any[]) => {
-        if (data.length === 0) return { count: 0, avg: 0, oldest: '-', newest: '-', daysSince: '-' };
+        if (data.length === 0) return { count: 0, avg: "0.0", oldest: '-', newest: '-', daysSince: '-' };
 
         const sorted = [...data].sort((a, b) => parseDate(a.datum).getTime() - parseDate(b.datum).getTime());
         const totalScore = sorted.reduce((acc, curr) => acc + (typeof curr.prozent === 'number' ? curr.prozent : 0), 0);
@@ -291,7 +290,7 @@ export default function DashboardPage() {
         };
     };
 
-    const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
         setActiveTab(newValue);
     };
 
@@ -361,7 +360,7 @@ export default function DashboardPage() {
             {/* Profile Section */}
             <Paper elevation={1} sx={{ p: 2, mb: 4, display: 'flex', gap: 2, alignItems: 'center', backgroundColor: '#f9f9f9' }}>
                 <Box>
-                    <Typography variant="h6">{user?.name}</Typography>
+                    <Typography variant="h6">{user?.displayName}</Typography>
                     <Typography variant="body2" color="textSecondary">{user?.email}</Typography>
                     <Typography variant="body2" sx={{ mt: 1 }}>
                         <strong>Rolle:</strong> {user?.role}
@@ -570,7 +569,7 @@ export default function DashboardPage() {
                                 color="primary"
                                 value={groupingMode}
                                 exclusive
-                                onChange={(e, newMode) => { if (newMode) setGroupingMode(newMode); }}
+                                onChange={(_e, newMode) => { if (newMode) setGroupingMode(newMode); }}
                                 size="small"
                             >
                                 <ToggleButton value="project">Projekt/Team</ToggleButton>

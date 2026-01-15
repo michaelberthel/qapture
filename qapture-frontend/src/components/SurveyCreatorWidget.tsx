@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { SurveyCreatorComponent, SurveyCreator } from 'survey-creator-react';
-import 'survey-core/defaultV2.min.css';
+import 'survey-core/survey-core.min.css';
 import 'survey-creator-core/survey-creator-core.min.css';
 import { editorLocalization } from "survey-creator-core";
+import "survey-creator-core/survey-creator-core.i18n";
 
 editorLocalization.currentLocale = "de";
 
@@ -20,6 +21,7 @@ export default function SurveyCreatorWidget({ json, onSave }: SurveyCreatorWidge
             isAutoSave: true
         };
         const newCreator = new SurveyCreator(options);
+        newCreator.haveCommercialLicense = true;
         newCreator.text = json;
         newCreator.saveSurveyFunc = (saveNo: number, callback: (no: number, success: boolean) => void) => {
             onSave(newCreator.text);

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Model } from 'survey-core';
 import { Survey } from 'survey-react-ui';
-import 'survey-core/defaultV2.min.css';
+import 'survey-core/survey-core.min.css';
 import { Box, Paper, Typography, Button } from '@mui/material';
 import type { LegacyEmployee, LegacyCatalog } from '../types/legacy';
 import { legacyApi } from '../services/legacyApi';
@@ -117,7 +117,7 @@ export default function NewEvaluationPage() {
                         surveyJson = JSON.parse(state.catalog.Jsondata);
                         catalogName = state.catalog.Name;
                         empName = state.employee.name;
-                        empId = state.employee.personioid;
+                        empId = String(state.employee.personioid);
                         empEmail = state.employee.email;
                     }
 

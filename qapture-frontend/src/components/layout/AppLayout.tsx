@@ -31,7 +31,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Chip, Alert } from '@mui/material';
+import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Alert } from '@mui/material';
 
 const drawerWidth = 260;
 

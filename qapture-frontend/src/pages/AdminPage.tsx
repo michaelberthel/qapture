@@ -46,7 +46,7 @@ export default function AdminPage() {
     const [syncing, setSyncing] = useState(false);
     const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
     const [showOnlyOverrides, setShowOnlyOverrides] = useState(false);
-    const [empError, setEmpError] = useState<string | null>(null);
+    // const [empError, setEmpError] = useState<string | null>(null);
 
     // Edit Employee
     const [openEmpDialog, setOpenEmpDialog] = useState(false);
@@ -58,15 +58,15 @@ export default function AdminPage() {
 
     // --- Team State ---
     const [customTeams, setCustomTeams] = useState<CustomTeam[]>([]);
-    const [teamLoading, setTeamLoading] = useState(false);
-    const [teamError, setTeamError] = useState<string | null>(null);
+    // const [teamLoading, setTeamLoading] = useState(false);
+    // const [teamError, setTeamError] = useState<string | null>(null);
     const [newTeamName, setNewTeamName] = useState('');
     const [createTeamLoading, setCreateTeamLoading] = useState(false);
 
     // --- Catalog State ---
     const [catalogs, setCatalogs] = useState<Catalog[]>([]);
-    const [catLoading, setCatLoading] = useState(false);
-    const [catError, setCatError] = useState<string | null>(null);
+    // const [catLoading, setCatLoading] = useState(false);
+    // const [catError, setCatError] = useState<string | null>(null);
 
     // Create/Edit Catalog
     const [openCatDialog, setOpenCatDialog] = useState(false);
@@ -88,7 +88,7 @@ export default function AdminPage() {
     // --- Employee Handlers ---
     const fetchEmployees = async () => {
         setEmpLoading(true);
-        setEmpError(null);
+        // setEmpError(null);
         try {
             const data = await personioApi.getEmployees();
             setEmployees(data);
@@ -97,7 +97,7 @@ export default function AdminPage() {
                 setLastSyncTime(lastSync);
             } catch (e) { console.warn(e); }
         } catch (err) {
-            setEmpError("Fehler beim Laden der Mitarbeiter.");
+            // setEmpError("Fehler beim Laden der Mitarbeiter.");
         } finally {
             setEmpLoading(false);
         }
@@ -191,15 +191,15 @@ export default function AdminPage() {
 
     // --- Team Handlers ---
     const fetchTeams = async () => {
-        setTeamLoading(true);
+        // setTeamLoading(true);
         try {
             const data = await adminApi.getCustomTeams();
             setCustomTeams(data);
             if (employees.length === 0) fetchEmployees();
         } catch (err) {
-            setTeamError("Fehler beim Laden der Teams");
+            // setTeamError("Fehler beim Laden der Teams");
         } finally {
-            setTeamLoading(false);
+            // setTeamLoading(false);
         }
     };
 
@@ -230,15 +230,15 @@ export default function AdminPage() {
 
     // --- Catalog Handlers ---
     const fetchCatalogs = async () => {
-        setCatLoading(true);
+        // setCatLoading(true);
         try {
             const data = await adminApi.getCatalogs();
             setCatalogs(data);
             if (customTeams.length === 0) fetchTeams();
         } catch (err) {
-            setCatError("Fehler beim Laden der Kataloge");
+            // setCatError("Fehler beim Laden der Kataloge");
         } finally {
-            setCatLoading(false);
+            // setCatLoading(false);
         }
     };
 
@@ -261,9 +261,9 @@ export default function AdminPage() {
         if (!catName || !catJson) return;
         setCatSaving(true);
         try {
-            let parsed;
+            // let parsed;
             try {
-                parsed = JSON.parse(catJson);
+                JSON.parse(catJson);
             } catch (e) {
                 alert("Ungültiges JSON!");
                 setCatSaving(false);
@@ -352,7 +352,7 @@ export default function AdminPage() {
     return (
         <Box width="100%">
             <Paper square elevation={1}>
-                <Tabs value={tabIndex} onChange={(e, v) => setTabIndex(v)} indicatorColor="primary" textColor="primary">
+                <Tabs value={tabIndex} onChange={(_e, v) => setTabIndex(v)} indicatorColor="primary" textColor="primary">
                     <Tab label="Mitarbeiter" />
                     <Tab label="Teams & Projekte" />
                     <Tab label="Kriterienkataloge" />
