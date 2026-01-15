@@ -15,6 +15,7 @@ import { personioApi } from '../services/personioApi';
 import type { Employee } from '../services/personioApi';
 import { adminApi, type Catalog, type CustomTeam } from '../services/adminApi';
 import { legacyApi } from '../services/legacyApi';
+import SurveyCreatorWidget from '../components/SurveyCreatorWidget';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -528,7 +529,7 @@ export default function AdminPage() {
             </Dialog>
 
             {/* CATALOG EDIT DIALOG */}
-            <Dialog open={openCatDialog} onClose={() => setOpenCatDialog(false)} maxWidth="md" fullWidth>
+            <Dialog open={openCatDialog} onClose={() => setOpenCatDialog(false)} maxWidth="xl" fullWidth>
                 <DialogTitle>{selectedCatalog ? 'Katalog bearbeiten' : 'Neuer Katalog'}</DialogTitle>
                 <DialogContent>
                     <Box pt={1} display="flex" flexDirection="column" gap={2}>
@@ -555,16 +556,12 @@ export default function AdminPage() {
                             </Select>
                         </FormControl>
 
-                        <TextField
-                            label="SurveyJS JSON Definition"
-                            multiline
-                            rows={15}
-                            fullWidth
-                            value={catJson}
-                            onChange={e => setCatJson(e.target.value)}
-                            helperText="Fügen Sie hier die JSON-Definition des Kriterienkatalogs ein."
-                            sx={{ fontFamily: 'monospace' }}
-                        />
+                        <div style={{ border: '1px solid #ddd', marginTop: 16 }}>
+                            <SurveyCreatorWidget
+                                json={catJson}
+                                onSave={(newJson) => setCatJson(newJson)}
+                            />
+                        </div>
                     </Box>
                 </DialogContent>
                 <DialogActions>

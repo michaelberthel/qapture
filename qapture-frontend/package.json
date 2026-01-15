@@ -28,8 +28,10 @@
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.20.0",
     "recharts": "^2.15.4",
-    "survey-core": "^1.9.0",
-    "survey-react-ui": "^1.9.0",
+    "survey-core": "^2.5.5",
+    "survey-creator-core": "^2.5.5",
+    "survey-creator-react": "^2.5.5",
+    "survey-react-ui": "^2.5.5",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
