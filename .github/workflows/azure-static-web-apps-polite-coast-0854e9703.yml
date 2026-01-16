@@ -36,7 +36,8 @@ jobs:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_POLITE_COAST_0854E9703 }}
           VITE_AZURE_TENANT_ID: "88b9f179-56c6-4b6e-a89f-7ec5613222c3"
           VITE_AZURE_CLIENT_ID: "e2825573-4b60-4838-88fc-3805c03897c4"
-          VITE_REDIRECT_URI: "https://polite-coast-0854e9703.3.azurestaticapps.net" # Detected URL from filename
+          VITE_API_URL: "https://qapture-api.azurewebsites.net" # Hardcoded to ensure build picks it up
+          # VITE_REDIRECT_URI removed to let code fallback to window.location.origin
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
