@@ -3,8 +3,13 @@ import { Microsoft as MicrosoftIcon } from '@mui/icons-material';
 import { useAuth } from '../hooks/useAuth';
 import { Navigate } from 'react-router-dom';
 
+import { useMsal } from '@azure/msal-react';
+
 export default function LoginPage() {
     const { login, user, isLoading, error } = useAuth();
+    const { accounts, inProgress } = useMsal();
+
+    console.log('LoginPage Debug:', { user, isLoading, error, accounts, inProgress });
 
     if (isLoading) {
         return <Box display="flex" justifyContent="center" alignItems="center" height="100vh">Loading...</Box>;
@@ -26,7 +31,8 @@ export default function LoginPage() {
                 <Card sx={{ width: '100%', py: 4, px: 2, textAlign: 'center' }}>
                     <CardContent>
                         <Box sx={{ mb: 2, display: 'flex', justifyContent: 'center' }}>
-                            <img src="/src/assets/logo.png" alt="Qapture Logo" style={{ maxWidth: '200px' }} />
+                            {/* Use public folder path directly */}
+                            <img src="/logo.png" alt="Qapture Logo" style={{ maxWidth: '200px' }} />
                         </Box>
                         <Typography variant="h6" color="text.secondary" gutterBottom sx={{ mb: 4 }}>
                             Quality Management Tool
