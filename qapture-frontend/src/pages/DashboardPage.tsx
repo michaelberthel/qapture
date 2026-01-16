@@ -965,7 +965,7 @@ export default function DashboardPage() {
                                                     paddingAngle={5}
                                                     dataKey="value"
                                                 >
-                                                    {actionRequiredStats.map((entry, index) => (
+                                                    {actionRequiredStats.map((_entry, index) => (
                                                         <Cell key={`cell-${index}`} fill={ACTION_COLORS[index % ACTION_COLORS.length]} />
                                                     ))}
                                                 </Pie>

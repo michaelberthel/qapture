@@ -1,0 +1,9 @@
+{
+    "platform": {
+        "apiRuntime": "node:20"
+    },
+    "trailingSlash": "auto",
+    "navigationFallback": {
+        "rewrite": "/index.html"
+    }
+}

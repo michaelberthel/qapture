@@ -29,7 +29,7 @@ import {
     Security as SecurityIcon,
     ExitToApp as ExitToAppIcon
 } from '@mui/icons-material';
-import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
+import { useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Alert } from '@mui/material';
 
