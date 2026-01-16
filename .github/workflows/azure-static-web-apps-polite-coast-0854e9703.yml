@@ -31,14 +31,12 @@ jobs:
           app_location: "./qapture-frontend" # App source code path
           api_location: "" # Api source code path - optional
           output_location: "dist" # Built app content directory - optional
-          ###### Environment Variables for Build ######
-          # These are passed as environment variables to the build process
-          # For example, if your app uses VITE_AZURE_TENANT_ID, it will be available during the build
-          env:
-            VITE_AZURE_TENANT_ID: "88b9f179-56c6-4b6e-a89f-7ec5613222c3"
-            VITE_AZURE_CLIENT_ID: "e2825573-4b60-4838-88fc-3805c03897c4"
-            VITE_REDIRECT_URI: "https://polite-coast-0854e9703.3.azurestaticapps.net" # Detected URL from filename
           ###### End of Repository/Build Configurations ######
+        env:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_POLITE_COAST_0854E9703 }}
+          VITE_AZURE_TENANT_ID: "88b9f179-56c6-4b6e-a89f-7ec5613222c3"
+          VITE_AZURE_CLIENT_ID: "e2825573-4b60-4838-88fc-3805c03897c4"
+          VITE_REDIRECT_URI: "https://polite-coast-0854e9703.3.azurestaticapps.net" # Detected URL from filename
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
