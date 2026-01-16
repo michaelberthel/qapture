@@ -7,7 +7,8 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-    BarChart, Bar, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis
+    BarChart, Bar, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+    PieChart, Pie, Cell, Legend
 } from 'recharts';
 
 interface DashboardMetric {
@@ -499,6 +500,45 @@ export default function DashboardPage() {
         return { histogram: buckets, radar: radarData, count: filteredAnalysisData.length, questions: questionData };
     }, [filteredAnalysisData, catalogLookup, selectedCatalog, mappings, dimensions, analysisTeam, analysisCatalog]);
 
+    // 4. Action Required Stats (Pie Chart)
+    const actionRequiredStats = useMemo(() => {
+        let yesCount = 0;
+        let noCount = 0;
+        let total = 0;
+
+        filteredAnalysisData.forEach(e => {
+            if (!e.fullData || !e.fullData.surveyresults) return;
+            const res = e.fullData.surveyresults;
+
+            // Find "Action Required" / "Handlungsbedarf" key
+            const actionKey = Object.keys(res).find(k =>
+                k.toLowerCase().includes('handlungsbedarf') ||
+                k.toLowerCase().includes('action') ||
+                k.toLowerCase().includes('aktion')
+            );
+
+            if (actionKey) {
+                const val = res[actionKey];
+                // Check for generic affirmative values
+                const isYes = val === true || val === 'true' || val === 'True' ||
+                    val === 'Yes' || val === 'yes' || val === 'Ja' || val === 'ja';
+
+                if (isYes) yesCount++;
+                else noCount++;
+                total++;
+            }
+        });
+
+        if (total === 0) return [];
+
+        return [
+            { name: 'Handlungsbedarf', value: yesCount },
+            { name: 'Kein Handlungsbedarf', value: noCount }
+        ];
+    }, [filteredAnalysisData]);
+
+    const ACTION_COLORS = ['#d32f2f', '#2e7d32']; // Red, Green
+
     // 4. Trend Analysis Data (Daily Averages)
     const analysisTrendData = useMemo(() => {
         const groups = new Map<string, { sum: number, count: number }>();
@@ -904,8 +944,45 @@ export default function DashboardPage() {
                                     </ResponsiveContainer>
                                 </Box>
                             </Paper>
+
                         </Grid>
-                        <Grid item xs={12} md={6}>
+
+                        {/* 1.1 Action Required Quote (Donut Chart) */}
+                        <Grid item xs={12} md={4}>
+                            <Paper elevation={2} sx={{ p: 3, height: 400, display: 'flex', flexDirection: 'column' }}>
+                                <Typography variant="h6" gutterBottom>Handlungsbedarfs-Quote</Typography>
+                                {actionRequiredStats.length > 0 ? (
+                                    <Box sx={{ flexGrow: 1, minHeight: 0 }}>
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <PieChart>
+                                                <Pie
+                                                    data={actionRequiredStats}
+                                                    cx="50%"
+                                                    cy="50%"
+                                                    innerRadius={60}
+                                                    outerRadius={80}
+                                                    fill="#8884d8"
+                                                    paddingAngle={5}
+                                                    dataKey="value"
+                                                >
+                                                    {actionRequiredStats.map((entry, index) => (
+                                                        <Cell key={`cell-${index}`} fill={ACTION_COLORS[index % ACTION_COLORS.length]} />
+                                                    ))}
+                                                </Pie>
+                                                <Tooltip />
+                                                <Legend verticalAlign="bottom" height={36} />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    </Box>
+                                ) : (
+                                    <Box display="flex" justifyContent="center" alignItems="center" height="100%">
+                                        <Typography variant="body2" color="text.secondary">Keine Daten für Handlungsbedarf gefunden</Typography>
+                                    </Box>
+                                )}
+                            </Paper>
+                        </Grid>
+
+                        <Grid item xs={12} md={8}>
                             <Paper elevation={2} sx={{ p: 3, height: '100%' }}>
                                 <Typography variant="h6" gutterBottom>Verteilung der Bewertungen</Typography>
                                 <Typography variant="caption" color="textSecondary" display="block" mb={2}>
@@ -988,7 +1065,7 @@ export default function DashboardPage() {
                             </Paper>
                         </Grid>
                     </Grid>
-                </Box>
+                </Box >
             )
             }
 
