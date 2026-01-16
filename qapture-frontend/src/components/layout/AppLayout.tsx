@@ -31,6 +31,7 @@ import {
 } from '@mui/icons-material';
 import { useLocation, useNavigate, Outlet } from 'react-router-dom';
 import Logo from '../../assets/logo.png';
+console.log('Logo Import Debug:', Logo); // Check what Vite resolved
 import { useAuth } from '../../hooks/useAuth';
 import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Alert } from '@mui/material';
 
