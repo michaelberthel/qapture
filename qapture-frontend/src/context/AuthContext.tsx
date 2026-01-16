@@ -124,23 +124,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const login = async () => {
         try {
             setError(null);
-            const response = await instance.loginPopup(loginRequest);
-            // Popup returns the account directly, but useMsal hook will also update
-            if (response.account) {
-                instance.setActiveAccount(response.account);
-            }
+            await instance.loginRedirect(loginRequest);
+            // loginRedirect doesn't return the account immediately, it redirects.
+            // processing happens after reload in handleRedirectPromise (handled by MsalProvider logic usually)
         } catch (e: any) {
             console.error('Login Error:', e);
-            setError(e.message || 'Login failed. Please check popup blockers.');
+            setError(e.message || 'Login failed.');
         }
     };
 
     const logout = () => {
         // Clear impersonation state on logout
         setOriginalUser(null);
-        instance.logoutPopup({
+        instance.logoutRedirect({
             postLogoutRedirectUri: window.location.origin,
-            mainWindowRedirectUri: window.location.origin
         });
         setUser(null);
     };
