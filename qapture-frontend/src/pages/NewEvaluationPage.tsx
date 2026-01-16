@@ -9,6 +9,7 @@ import { legacyApi } from '../services/legacyApi';
 import { useAuth } from '../hooks/useAuth';
 import type { Employee } from '../services/personioApi';
 import type { Catalog } from '../services/adminApi';
+import { adminApi } from '../services/adminApi';
 
 interface PageState {
     employee?: LegacyEmployee; // Legacy
@@ -87,6 +88,52 @@ export default function NewEvaluationPage() {
                         });
                         return; // Done
                     }
+
+                    // Fallback: Try Admin API (MongoDB Catalogs)
+                    try {
+                        // We import adminApi inside or assume it is available (need to import it at top)
+                        // Dynamic import or assume it handles it? Let's add import at top or use fetch directly? 
+                        // Better to use adminApi service.
+                        const allCatalogs = await adminApi.getCatalogs();
+                        const mongoCatalog = allCatalogs.find((c: any) => c.name === catalogName);
+
+                        if (mongoCatalog) {
+                            const surveyJson = typeof mongoCatalog.jsonData === 'string' ? JSON.parse(mongoCatalog.jsonData) : mongoCatalog.jsonData;
+                            const survey = new Model(surveyJson);
+
+                            // Restore Logic (Duplicated from above - should be refactored but inline for safety now)
+                            const restoredData: any = {};
+                            Object.keys(surveyResults).forEach(key => {
+                                restoredData[key] = surveyResults[key];
+                                const spaceKey = key.replace(/_/g, ' ');
+                                if (spaceKey !== key) restoredData[spaceKey] = surveyResults[key];
+                            });
+
+                            if (surveyResults.Datum && typeof surveyResults.Datum === 'string') {
+                                const [dPart, tPart] = surveyResults.Datum.split(', ');
+                                if (dPart && tPart) {
+                                    const [dd, mm, yyyy] = dPart.split('.');
+                                    restoredData["Datum"] = `${yyyy}-${mm}-${dd}T${tPart.substring(0, 5)}`;
+                                }
+                            }
+                            survey.data = restoredData;
+
+                            ["Projekt", "Kriterienkatalog", "Name"].forEach(f => {
+                                const q = survey.getQuestionByName(f);
+                                if (q) q.readOnly = true;
+                            });
+
+                            configureSurvey(survey, {
+                                existingId: evalData.id
+                            });
+                            return;
+                        }
+
+                    } catch (err) {
+                        console.error("Fallback catalog fetch failed", err);
+                    }
+
+
                     // What if not found in legacy? Potentially new catalog type?
                     // We assume for now edits work via legacy as previous.
                 } catch (e) {
@@ -215,7 +262,8 @@ export default function NewEvaluationPage() {
             } catch (e) { console.warn("Date formatting failed", e); }
         }
         sanitizedResults["Datum"] = formattedDatum;
-        sanitizedResults["Name"] = data["EmployeeName"] || data["Name"];
+        // FIX: User requires Email in the 'Name' field for correct association
+        sanitizedResults["Name"] = data["EmployeeEmail"] || data["Name"];
 
         sanitizedResults["Punkte"] = points;
         sanitizedResults["Erreichbare_Punkte"] = maxPoints;

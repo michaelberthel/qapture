@@ -15,7 +15,8 @@ router.get('/', async (req, res) => {
         // Parse teams safely
         let userTeams = [];
         try {
-            userTeams = req.headers['x-user-teams'] ? JSON.parse(req.headers['x-user-teams']) : [];
+            const rawTeams = req.headers['x-user-teams'] ? JSON.parse(req.headers['x-user-teams']) : [];
+            userTeams = Array.isArray(rawTeams) ? rawTeams.filter(t => typeof t === 'string' && t.trim() !== '') : [];
         } catch (e) {
             console.error('Error parsing x-user-teams header:', e);
         }
@@ -28,6 +29,7 @@ router.get('/', async (req, res) => {
 
         // Helper to escape regex special chars
         const escapeRegExp = (string) => {
+            if (typeof string !== 'string') return '';
             return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         };
 
@@ -51,39 +53,48 @@ router.get('/', async (req, res) => {
             // 2. Own evaluations condition
             // "Bewertername" match case-insensitive
             if (userEmail) {
-                const emailRegex = new RegExp(`^${escapeRegExp(userEmail)}$`, 'i');
+                const safeEmail = escapeRegExp(userEmail);
+                const emailRegex = new RegExp(`^${safeEmail}$`, 'i');
                 orConditions.push({ "surveyresults.Bewertername": { $regex: emailRegex } });
             }
 
             if (orConditions.length > 0) {
                 query = { $or: orConditions };
             } else {
-                // Should practically not happen if userEmail is set, but safe fallback
+                // If no team logic and no email, show nothing or everything?
+                // Assuming "Manager" should at least see their own if teams fail.
+                // If neither, then block access.
                 query = { _id: null };
             }
         } else {
             // Mitarbeiter sees only their own
-            // Matching "surveyresults.Name" or "surveyresults.EmployeeEmail"
-            // Using case-insensitive regex to avoid mismatch (e.g. Thomas.Dietz vs thomas.dietz)
-            const emailRegex = new RegExp(`^${escapeRegExp(userEmail)}$`, 'i');
+            if (userEmail) {
+                const safeEmail = escapeRegExp(userEmail);
+                const emailRegex = new RegExp(`^${safeEmail}$`, 'i');
 
-            query = {
-                $or: [
-                    { "surveyresults.Name": { $regex: emailRegex } },
-                    { "surveyresults.EmployeeEmail": { $regex: emailRegex } },
-                    { "surveyresults.Email": { $regex: emailRegex } }
-                ]
-            };
+                query = {
+                    $or: [
+                        { "surveyresults.Name": { $regex: emailRegex } },
+                        { "surveyresults.EmployeeEmail": { $regex: emailRegex } },
+                        { "surveyresults.Email": { $regex: emailRegex } }
+                    ]
+                };
+            } else {
+                // No email, no data
+                query = { _id: null };
+            }
         }
 
         // Add strict sorting by date (newest first)
         // Note: Datum is string "DD.MM.YYYY, HH:mm:ss" which sorts bad alphabetically.
         // "Datum_der_Bearbeitung" is "YYYY-MM-DD".
         // Let's sort natural or by _id desc for now (latest created).
+        console.log("Mongo Query:", JSON.stringify(query, null, 2));
         const evaluations = await collection.find(query)
             .sort({ _id: -1 })
             .sort({ _id: -1 })
             .toArray();
+        console.log(`Found ${evaluations.length} evaluations`);
 
         // Map to flat structure for frontend grid
         const mappedEvaluations = evaluations.map(ev => {
@@ -92,9 +103,10 @@ router.get('/', async (req, res) => {
             // Extract percentage number for sorting
             let percent = 0;
             if (typeof res.Prozent === 'string') {
-                percent = parseFloat(res.Prozent.replace(',', '.'));
+                const parsed = parseFloat(res.Prozent.replace(',', '.'));
+                percent = isNaN(parsed) ? 0 : parsed;
             } else if (typeof res.Prozent === 'number') {
-                percent = res.Prozent;
+                percent = isNaN(res.Prozent) ? 0 : res.Prozent;
             }
 
             return {
@@ -110,7 +122,24 @@ router.get('/', async (req, res) => {
             };
         });
 
-        res.json(mappedEvaluations);
+        // Diagnostic: Check DB state
+        const collections = await db.listCollections().toArray();
+        const totalInCollection = await collection.countDocuments();
+
+        res.json({
+            _debug: {
+                role: userRole,
+                email: userEmail,
+                query: query,
+                queryString: JSON.stringify(query), // Force visibility of query structure
+                totalFound: evaluations.length,
+                totalInCollection: totalInCollection,
+                dbName: db.databaseName,
+                collectionName: collection.collectionName,
+                collections: collections.map(c => c.name)
+            },
+            data: mappedEvaluations
+        });
 
     } catch (error) {
         console.error('Error fetching evaluations:', error);

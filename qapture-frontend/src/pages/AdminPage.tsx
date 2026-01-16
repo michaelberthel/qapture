@@ -9,7 +9,7 @@ import type { SelectChangeEvent } from '@mui/material';
 import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
 import { DataGrid } from '@mui/x-data-grid';
 import { deDE } from '@mui/x-data-grid/locales';
-import { Edit as EditIcon, Refresh as RefreshIcon, CloudSync as CloudSyncIcon, Delete as DeleteIcon, Add as AddIcon, ImportExport as ImportIcon } from '@mui/icons-material';
+import { Edit as EditIcon, Refresh as RefreshIcon, CloudSync as CloudSyncIcon, Delete as DeleteIcon, Add as AddIcon, ImportExport as ImportIcon, ContentCopy as ContentCopyIcon, History as HistoryIcon } from '@mui/icons-material';
 import { useAuth } from '../hooks/useAuth';
 import { personioApi } from '../services/personioApi';
 import type { Employee } from '../services/personioApi';
@@ -203,6 +203,17 @@ export default function AdminPage() {
         }
     };
 
+    // Filter Logic for Catalogs
+    const [catTeamFilter, setCatTeamFilter] = useState<string>('All');
+
+    const filteredCatalogs = useMemo(() => {
+        let list = catalogs;
+        if (catTeamFilter !== 'All') {
+            list = list.filter(c => c.projects && c.projects.includes(catTeamFilter));
+        }
+        return list;
+    }, [catalogs, catTeamFilter]);
+
     const handleCreateTeam = async () => {
         if (!newTeamName.trim()) return;
         setCreateTeamLoading(true);
@@ -297,6 +308,30 @@ export default function AdminPage() {
             fetchCatalogs();
         } catch (err) {
             alert('Löschen fehlgeschlagen');
+        }
+    };
+
+    const handleDuplicateCatalog = async (cat: Catalog) => {
+        const newName = prompt('Name für die Kopie:', `${cat.name} (Kopie)`);
+        if (newName === null) return; // Cancelled
+
+        try {
+            await adminApi.duplicateCatalog(cat._id, newName);
+            fetchCatalogs();
+        } catch (err) {
+            alert('Duplizieren fehlgeschlagen');
+        }
+    };
+
+    const handleCreateVersion = async (cat: Catalog) => {
+        if (!confirm(`Soll der Katalog "${cat.name}" archiviert und als neue Version (v${(cat.version || 1) + 1}) angelegt werden?`)) return;
+
+        try {
+            await adminApi.createNewVersion(cat._id);
+            alert("Neue Version wurde angelegt.");
+            fetchCatalogs();
+        } catch (err) {
+            alert('Versionierung fehlgeschlagen');
         }
     };
 
@@ -440,14 +475,27 @@ export default function AdminPage() {
 
             {/* TAB 2: KATALOGE */}
             <TabPanel value={tabIndex} index={2}>
-                <Box display="flex" justifyContent="space-between" mb={2}>
+                <Box display="flex" justifyContent="space-between" mb={2} alignItems="center">
                     <Typography variant="h5">Kriterienkataloge</Typography>
-                    <Box>
+                    <Box display="flex" gap={2}>
+                        <FormControl size="small" sx={{ minWidth: 200 }}>
+                            <InputLabel>Filter nach Team</InputLabel>
+                            <Select
+                                value={catTeamFilter}
+                                label="Filter nach Team"
+                                onChange={(e) => setCatTeamFilter(e.target.value)}
+                            >
+                                <MenuItem value="All"><em>Alle Teams</em></MenuItem>
+                                {allAvailableTeams.map(t => (
+                                    <MenuItem key={t} value={t}>{t}</MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+
                         <Button
                             startIcon={importing ? <CircularProgress size={20} /> : <ImportIcon />}
                             onClick={handleImportFromLegacy}
                             disabled={importing}
-                            sx={{ mr: 2 }}
                             variant="outlined"
                             color="warning"
                         >
@@ -461,15 +509,41 @@ export default function AdminPage() {
 
                 <Paper sx={{ p: 0 }}>
                     <List>
-                        {catalogs.map(cat => (
+                        {filteredCatalogs.map(cat => (
                             <ListItem key={cat._id} divider>
                                 <MuiListItemText
-                                    primary={cat.name}
+                                    primary={
+                                        <Box display="flex" alignItems="center" gap={1}>
+                                            {cat.name}
+                                            {cat.isActive === false && <Chip label="Inaktiv" size="small" />}
+                                        </Box>
+                                    }
                                     secondary={`Zugewiesen an: ${cat.projects?.join(', ') || 'Keine'}`}
                                 />
-                                <ListItemSecondaryAction>
-                                    <IconButton onClick={() => handleOpenCatDialog(cat)}><EditIcon /></IconButton>
-                                    <IconButton onClick={() => handleDeleteCatalog(cat._id)} color="error"><DeleteIcon /></IconButton>
+                                <ListItemSecondaryAction sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <FormControlLabel
+                                        control={
+                                            <Checkbox
+                                                checked={cat.isActive !== false} // Default true
+                                                onChange={async (e) => {
+                                                    try {
+                                                        await adminApi.updateCatalog(cat._id, { isActive: e.target.checked });
+                                                        fetchCatalogs();
+                                                    } catch (err) { alert('Status-Update fehlgeschlagen'); }
+                                                }}
+                                                color="success"
+                                            />
+                                        }
+                                        label={cat.isActive !== false ? "Aktiv" : "Inaktiv"}
+                                    />
+                                    <IconButton onClick={() => handleDuplicateCatalog(cat)} title="Kopieren">
+                                        <ContentCopyIcon />
+                                    </IconButton>
+                                    <IconButton onClick={() => handleCreateVersion(cat)} title="Neue Version erstellen">
+                                        <HistoryIcon />
+                                    </IconButton>
+                                    <IconButton onClick={() => handleOpenCatDialog(cat)} title="Bearbeiten"><EditIcon /></IconButton>
+                                    <IconButton onClick={() => handleDeleteCatalog(cat._id)} color="error" title="Löschen"><DeleteIcon /></IconButton>
                                 </ListItemSecondaryAction>
                             </ListItem>
                         ))}

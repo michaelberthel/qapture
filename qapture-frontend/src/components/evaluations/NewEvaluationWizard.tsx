@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { ChevronsUpDown, Play, Briefcase, FileText, User, Check } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+
 import { Button } from "@/components/ui/button";
 import {
     Card,
@@ -51,7 +51,7 @@ const formSchema = z.object({
 export function NewEvaluationWizard() {
     const navigate = useNavigate();
     const { user } = useAuth();
-    const [loading, setLoading] = useState(false);
+
 
     // Data State
     const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
@@ -77,7 +77,7 @@ export function NewEvaluationWizard() {
 
     useEffect(() => {
         const fetchData = async () => {
-            setLoading(true);
+
             try {
                 const [empData, catData] = await Promise.all([
                     personioApi.getEmployees(),
@@ -88,7 +88,7 @@ export function NewEvaluationWizard() {
             } catch (error) {
                 console.error("Failed to load wizard data", error);
             } finally {
-                setLoading(false);
+
             }
         };
         fetchData();
@@ -101,7 +101,7 @@ export function NewEvaluationWizard() {
     }, [user, form, selectedTeamName]);
 
     const availableCatalogs = allCatalogs.filter(
-        (c) => c.projects && c.projects.includes(selectedTeamName)
+        (c) => c.projects && c.projects.includes(selectedTeamName) && c.isActive !== false
     );
 
     const availableEmployees = allEmployees.filter(

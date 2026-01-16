@@ -8,6 +8,8 @@ import NewEvaluationPage from '../pages/NewEvaluationPage';
 import EvaluationHistoryPage from '../pages/EvaluationHistoryPage';
 import { Box, CircularProgress } from '@mui/material';
 import AdminPage from '../pages/AdminPage';
+import CriteriaInventoryPage from '../pages/CriteriaInventoryPage';
+import CategoryMappingPage from '../pages/CategoryMappingPage';
 
 function ProtectedRoute() {
     const { user, isLoading } = useAuth();
@@ -46,6 +48,8 @@ export default function AppRoutes() {
 
                     <Route path="/teams" element={<div>Teams Page (Coming Soon)</div>} />
                     <Route path="/admin" element={<AdminPage />} />
+                    <Route path="/admin/inventory" element={<CriteriaInventoryPage />} />
+                    <Route path="/admin/maps" element={<CategoryMappingPage />} />
                 </Route>
             </Route>
 

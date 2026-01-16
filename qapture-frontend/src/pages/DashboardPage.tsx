@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import {
     Box, Grid, Paper, Typography, Tab, Tabs, Card, CardContent, CircularProgress,
     TextField, MenuItem, FormControl, InputLabel, Select, Button,
-    Table, TableBody, TableCell, TableContainer, TableHead, TableRow, ToggleButton, ToggleButtonGroup, type SelectChangeEvent
+    Table, TableBody, TableCell, TableContainer, TableHead, TableRow, ToggleButton, ToggleButtonGroup, Alert, type SelectChangeEvent
 } from '@mui/material';
 import { useAuth } from '../hooks/useAuth';
 import {
@@ -17,11 +17,28 @@ interface DashboardMetric {
     trendData: any[];
 }
 
+import { evaluationApi } from '../services/api';
+import { adminApi } from '../services/adminApi';
+
+// Mapping legacy/evaluation catalog names to current Catalog Definitions
+const CATALOG_NAME_MAPPING: Record<string, string> = {
+    "Telefonie - Inbound": "Bewertung Inbound",
+    "Telefonie - Outbound": "Bewertung Outbound",
+    "Chat Bearbeitung": "Bewertung Chat",
+    "QM Bewertung": "Bewertung Inbound", // Map legacy name
+    "Inbound": "Bewertung Inbound" // Map Targo project name
+};
+
 export default function DashboardPage() {
     const { user } = useAuth();
     const [loading, setLoading] = useState(true);
     const [evaluations, setEvaluations] = useState<any[]>([]);
+    const [catalogs, setCatalogs] = useState<any[]>([]); // Store catalog definitions
     const [activeTab, setActiveTab] = useState(0); // 0 = Received, 1 = Given, 2 = Global, 3 = Analysis, 4 = Stats
+
+    // Mapping Data
+    const [dimensions, setDimensions] = useState<any[]>([]);
+    const [mappings, setMappings] = useState<Record<string, string>>({});
 
     // Filter States for Admin View
     const [dateFrom, setDateFrom] = useState('');
@@ -38,10 +55,14 @@ export default function DashboardPage() {
     const [statsEmployee, setStatsEmployee] = useState('All');
 
     // Filter States for Analysis View (Visualizations)
+
+
     const [analysisTeam, setAnalysisTeam] = useState('All');
     const [analysisCatalog, setAnalysisCatalog] = useState('All');
     const [analysisEvaluator, setAnalysisEvaluator] = useState('All');
     const [analysisEmployee, setAnalysisEmployee] = useState('All');
+    const [analysisDateFrom, setAnalysisDateFrom] = useState('');
+    const [analysisDateTo, setAnalysisDateTo] = useState('');
 
     // Grouping Mode
     const [groupingMode, setGroupingMode] = useState<'project' | 'evaluator' | 'employee'>('project');
@@ -51,33 +72,81 @@ export default function DashboardPage() {
     const [givenMetrics, setGivenMetrics] = useState<DashboardMetric>({ count: 0, avgScore: 0, lastDate: null, trendData: [] });
     const [globalMetrics, setGlobalMetrics] = useState<DashboardMetric>({ count: 0, avgScore: 0, lastDate: null, trendData: [] });
 
+    // Initial Data Fetch
     useEffect(() => {
-        const fetchEvaluations = async () => {
-            if (!user) return;
-            setLoading(true);
+        const load = async () => {
+            console.log("Dashboard Load: User:", user);
             try {
-                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-                const response = await fetch(`${apiUrl}/api/evaluations`, {
-                    headers: {
-                        'x-user-role': user.role,
-                        'x-user-email': user.email,
-                        'x-user-teams': JSON.stringify(user.teams?.map(t => t.team.name) || [])
-                    }
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
+                // Fetch evaluations
+                // Pass current user context explicitly to ensure headers are correct 
+                if (user) {
+                    const data = await evaluationApi.getAll(user);
+                    console.log("Dashboard Load: Raw Data from API:", data);
                     setEvaluations(data);
                 }
+
+                // Fetch catalog definitions and mappings
+                const [cats, dims, maps] = await Promise.all([
+                    adminApi.getCatalogs(),
+                    adminApi.getDimensions(),
+                    adminApi.getMappings()
+                ]);
+                setCatalogs(cats);
+                setDimensions(dims);
+
+                const mapObj: Record<string, string> = {};
+                maps.forEach((m: any) => {
+                    if (m.dimensionId) mapObj[m.categoryName] = m.dimensionId;
+                });
+                setMappings(mapObj);
+
             } catch (error) {
-                console.error('Error fetching dashboard data:', error);
+                console.error("Failed to load dashboard data", error);
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchEvaluations();
+        if (user) {
+            load();
+        }
     }, [user]);
+
+    // Build Catalog Lookup Map: CatalogName -> QuestionName -> { Category, MaxScore, Type }
+    const catalogLookup = useMemo(() => {
+        const lookup = new Map<string, Map<string, { category: string, max: number, type: string }>>();
+        catalogs.forEach(cat => {
+            if (!cat.jsonData) return;
+            try {
+                const json = typeof cat.jsonData === 'string' ? JSON.parse(cat.jsonData) : cat.jsonData;
+                const questionMap = new Map<string, { category: string, max: number, type: string }>();
+
+                if (json.pages && Array.isArray(json.pages)) {
+                    json.pages.forEach((page: any) => {
+                        const category = page.name || page.title || 'Other';
+                        if (page.elements && Array.isArray(page.elements)) {
+                            page.elements.forEach((el: any) => {
+                                if (el.name) {
+                                    // Determina max score. Default to 1 if not specified (e.g. boolean), or rateMax for ratings.
+                                    let max = 1;
+                                    if (el.type === 'rating') {
+                                        max = el.rateMax || 5;
+                                    } else if (el.type === 'radiogroup' || el.type === 'boolean') {
+                                        max = 1;
+                                    }
+                                    questionMap.set(el.name, { category, max, type: el.type });
+                                }
+                            });
+                        }
+                    });
+                }
+                lookup.set(cat.name, questionMap);
+            } catch (e) {
+                console.error('Error parsing catalog JSON', e);
+            }
+        });
+        return lookup;
+    }, [catalogs]);
 
     // Sorting State
     const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'count', direction: 'desc' });
@@ -110,7 +179,7 @@ export default function DashboardPage() {
 
     // Recalculate Basic Metrics (Tabs 0-2)
     useEffect(() => {
-        if (!user || evaluations.length === 0) return;
+        if (!user) return;
 
         // 1. Calculate Personal & Given (Unfiltered by dashboard filters, always user specific)
         const received = evaluations.filter(e =>
@@ -183,8 +252,19 @@ export default function DashboardPage() {
         if (analysisCatalog !== 'All') analysisDataVals = analysisDataVals.filter(e => e.kriterienkatalog === analysisCatalog);
         if (analysisEvaluator !== 'All') analysisDataVals = analysisDataVals.filter(e => e.bewerter === analysisEvaluator);
         if (analysisEmployee !== 'All') analysisDataVals = analysisDataVals.filter(e => e.name === analysisEmployee);
+
+        if (analysisDateFrom) {
+            const dFrom = new Date(analysisDateFrom);
+            analysisDataVals = analysisDataVals.filter(e => parseDate(e.datum) >= dFrom);
+        }
+        if (analysisDateTo) {
+            const dToTime = new Date(analysisDateTo);
+            dToTime.setHours(23, 59, 59, 999);
+            analysisDataVals = analysisDataVals.filter(e => parseDate(e.datum) <= dToTime);
+        }
+
         return analysisDataVals;
-    }, [evaluations, analysisTeam, analysisCatalog, analysisEvaluator, analysisEmployee]);
+    }, [evaluations, analysisTeam, analysisCatalog, analysisEvaluator, analysisEmployee, analysisDateFrom, analysisDateTo]);
 
     const calculateDetailedStats = (data: any[]) => {
         if (data.length === 0) return { count: 0, avg: "0.0", oldest: '-', newest: '-', daysSince: '-' };
@@ -278,28 +358,177 @@ export default function DashboardPage() {
             else buckets[4].count++;
         });
 
-        // 2. Radar Chart
-        const radarData = [
-            { subject: 'Fachwissen', A: 0, fullMark: 100 },
-            { subject: 'Soft Skills', A: 0, fullMark: 100 },
-            { subject: 'Prozesse', A: 0, fullMark: 100 },
-            { subject: 'Dokumentation', A: 0, fullMark: 100 },
-            { subject: 'Lösung', A: 0, fullMark: 100 },
-            { subject: 'Freundlichkeit', A: 0, fullMark: 100 },
-        ];
+        // 2. Radar Chart (REAL DATA)
+        const categoryStats = new Map<string, { sum: number, count: number }>();
 
-        if (filteredAnalysisData.length > 0) {
-            const totalAvg = filteredAnalysisData.reduce((acc, curr) => acc + (curr.prozent || 0), 0) / filteredAnalysisData.length;
+        filteredAnalysisData.forEach(e => {
+            const rawName = e.kriterienkatalog;
+            const catName = CATALOG_NAME_MAPPING[rawName] || rawName;
+            const map = catalogLookup.get(catName);
 
-            radarData[0].A = Math.min(100, Math.round(totalAvg * 0.95));
-            radarData[1].A = Math.min(100, Math.round(totalAvg * 1.05));
-            radarData[2].A = Math.min(100, Math.round(totalAvg * 0.9));
-            radarData[3].A = Math.min(100, Math.round(totalAvg));
-            radarData[4].A = Math.min(100, Math.round(totalAvg * 0.98));
-            radarData[5].A = Math.min(100, Math.round(totalAvg * 1.02));
+            if (!map) {
+                console.warn(`[Radar] No map found for catalog: ${catName} (raw: ${rawName})`);
+                return;
+            }
+
+            const answers = e.fullData || {};
+            if (e.fullData && e.fullData.surveyresults) {
+                // Handle nested structure if necessary (legacy vs new)
+                Object.assign(answers, e.fullData.surveyresults);
+            }
+
+
+
+            let matchCount = 0;
+            Object.entries(answers).forEach(([qName, qValue]) => {
+                const info = map.get(qName);
+                if (info) {
+                    const { category, max, type } = info;
+
+                    // Filter: Only allow 'rating', 'boolean', 'radiogroup'
+                    if (type !== 'rating' && type !== 'boolean' && type !== 'radiogroup') return;
+
+                    matchCount++;
+                    if (typeof max !== 'number' || max <= 0) return; // Prevent division by zero
+
+                    let numVal = 0;
+                    if (typeof qValue === 'number') numVal = qValue;
+                    else if (typeof qValue === 'string' && !isNaN(Number(qValue))) numVal = Number(qValue);
+                    else return;
+
+                    let percent = (numVal / max) * 100;
+                    if (isNaN(percent) || !isFinite(percent)) percent = 0; // Guard against bad math
+                    if (percent > 100) percent = 100; // Cap at 100% for legacy mismatches
+
+                    // Determine Group Key (Category or Dimension)
+                    let groupKey = category;
+
+                    // IF no specific catalog selected, use Dimension Mapping
+                    if (selectedCatalog === 'All') {
+                        const dimId = mappings[category];
+                        if (dimId) {
+                            const dim = dimensions.find(d => d._id === dimId);
+                            if (dim) groupKey = dim.name;
+                            else groupKey = 'Sonstiges'; // ID valid but dim missing
+                        } else {
+                            groupKey = 'Sonstiges'; // Not mapped
+                        }
+                    }
+
+                    if (!categoryStats.has(groupKey)) {
+                        categoryStats.set(groupKey, { sum: 0, count: 0 });
+                    }
+                    const stat = categoryStats.get(groupKey)!;
+                    stat.sum += percent;
+                    stat.count++;
+                }
+            });
+
+        });
+
+        const radarData = Array.from(categoryStats.entries()).map(([subject, stats]) => {
+            let avg = stats.count > 0 ? stats.sum / stats.count : 0;
+            if (isNaN(avg) || !isFinite(avg)) avg = 0;
+            return {
+                subject,
+                A: Math.round(avg),
+                fullMark: 100
+            };
+        });
+
+        // Sort categories to make the chart consistent
+        radarData.sort((a, b) => a.subject.localeCompare(b.subject));
+
+        // 3. Question Statistics (Average Score per Question)
+        const questionStats: { question: string, fullQuestion: string, sum: number, count: number, max: number }[] = [];
+
+        // Only calculate if a catalog is selected (or at least filtering by team ensures meaningful context)
+        // User requested: "only when project and maybe catalog is filtered"
+        // Let's allow it if Team OR Catalog is selected.
+        if (analysisTeam !== 'All' || analysisCatalog !== 'All') {
+            filteredAnalysisData.forEach(e => {
+                const rawName = e.kriterienkatalog;
+                // Use mapping to find definition
+                const catName = CATALOG_NAME_MAPPING[rawName] || rawName;
+                const map = catalogLookup.get(catName);
+
+                if (!map) return;
+
+                const answers = e.fullData || {};
+                if (e.fullData && e.fullData.surveyresults) {
+                    Object.assign(answers, e.fullData.surveyresults);
+                }
+
+                Object.entries(answers).forEach(([qName, qValue]) => {
+                    const info = map.get(qName);
+                    if (info) {
+                        // found question definition
+                        const { max, type } = info;
+
+                        // Filter: Only allow scorable types
+                        if (type !== 'rating' && type !== 'boolean' && type !== 'radiogroup') return;
+
+                        let numVal = 0;
+                        if (typeof qValue === 'number') numVal = qValue;
+                        else if (typeof qValue === 'string' && !isNaN(Number(qValue))) numVal = Number(qValue);
+                        else return;
+
+                        let percent = (numVal / max) * 100;
+                        if (isNaN(percent)) percent = 0;
+                        if (percent > 100) percent = 100; // Cap at 100%
+
+                        // Find existing stat entry or create
+                        let stat = questionStats.find(s => s.question === qName);
+                        if (!stat) {
+                            stat = { question: qName, fullQuestion: qName, sum: 0, count: 0, max };
+                            questionStats.push(stat);
+                        }
+                        stat.sum += percent;
+                        stat.count++;
+                    }
+                });
+            });
         }
 
-        return { histogram: buckets, radar: radarData, count: filteredAnalysisData.length };
+        const questionData = questionStats.map(s => ({
+            question: s.question,
+            avg: Math.round(s.sum / s.count),
+            count: s.count
+        })).sort((a, b) => a.avg - b.avg); // Sort by lowest score first? Or alphabetical? Let's do score asc (weakest first)
+
+        return { histogram: buckets, radar: radarData, count: filteredAnalysisData.length, questions: questionData };
+    }, [filteredAnalysisData, catalogLookup, selectedCatalog, mappings, dimensions, analysisTeam, analysisCatalog]);
+
+    // 4. Trend Analysis Data (Daily Averages)
+    const analysisTrendData = useMemo(() => {
+        const groups = new Map<string, { sum: number, count: number }>();
+
+        filteredAnalysisData.forEach(e => {
+            if (!e.datum) return;
+            const dateObj = parseDate(e.datum);
+            // Format to YYYY-MM-DD for grouping
+            const key = dateObj.toISOString().split('T')[0];
+
+            const score = typeof e.prozent === 'number' ? e.prozent : 0;
+
+            if (!groups.has(key)) {
+                groups.set(key, { sum: 0, count: 0 });
+            }
+            const g = groups.get(key)!;
+            g.sum += score;
+            g.count++;
+        });
+
+        const data = Array.from(groups.entries()).map(([date, { sum, count }]) => ({
+            date,
+            formattedDate: new Date(date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }),
+            score: Math.round((sum / count) * 10) / 10 // Round to 1 decimal
+        }));
+
+        // Sort by date
+        data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+        return data;
     }, [filteredAnalysisData]);
 
     const requestSort = (key: string) => {
@@ -317,8 +546,11 @@ export default function DashboardPage() {
             const dateB = parseDate(b.datum);
             return dateA.getTime() - dateB.getTime();
         });
-        const totalScore = sorted.reduce((acc, curr) => acc + (typeof curr.prozent === 'number' ? curr.prozent : 0), 0);
-        const avg = totalScore / sorted.length;
+        const totalScore = sorted.reduce((acc, curr) => {
+            const val = typeof curr.prozent === 'number' && !isNaN(curr.prozent) ? curr.prozent : 0;
+            return acc + val;
+        }, 0);
+        const avg = sorted.length > 0 ? totalScore / sorted.length : 0;
         const trend = sorted.map(e => ({
             date: e.datum.split(',')[0],
             score: e.prozent,
@@ -336,8 +568,32 @@ export default function DashboardPage() {
         setActiveTab(newValue);
     };
 
-    const uniqueTeams = useMemo(() => Array.from(new Set(evaluations.map(e => e.projekt))).filter(Boolean), [evaluations]);
-    const uniqueCatalogs = useMemo(() => Array.from(new Set(evaluations.map(e => e.kriterienkatalog))).filter(Boolean), [evaluations]);
+    const uniqueTeams = useMemo(() => Array.from(new Set(evaluations.map(e => e.projekt))).filter(Boolean).sort(), [evaluations]);
+
+    // Dependent Catalog List for Analysis Tab
+    // If a team is selected, show only catalogs used by that team
+    const uniqueCatalogsAnalysis = useMemo(() => {
+        let source = evaluations;
+        if (analysisTeam !== 'All') {
+            source = source.filter(e => e.projekt === analysisTeam);
+        }
+        return Array.from(new Set(source.map(e => e.kriterienkatalog))).filter(Boolean).sort();
+    }, [evaluations, analysisTeam]);
+
+    // For other tabs (Global Filter), we might want similar behavior or keep it global?
+    // User specifically asked for "Dropdown zur Filterung" in the context of "Startseite -> Auswertungen" (which is this tabs logic).
+    // Let's assume Global Filter should also be dependent if we want consistency, but user focused on Analysis.
+    // Let's update Global Filter as well for consistency.
+    const uniqueCatalogsGlobal = useMemo(() => {
+        let source = evaluations;
+        if (selectedTeams.length > 0) {
+            source = source.filter(e => selectedTeams.includes(e.projekt));
+        }
+        return Array.from(new Set(source.map(e => e.kriterienkatalog))).filter(Boolean).sort();
+    }, [evaluations, selectedTeams]);
+
+    // Independent lists for others
+    const uniqueCatalogs = useMemo(() => Array.from(new Set(evaluations.map(e => e.kriterienkatalog))).filter(Boolean).sort(), [evaluations]);
     const uniqueEvaluators = useMemo(() => Array.from(new Set(evaluations.map(e => e.bewerter))).filter(Boolean), [evaluations]);
     const uniqueEmployees = useMemo(() => Array.from(new Set(evaluations.map(e => e.name))).filter(Boolean), [evaluations]);
 
@@ -367,7 +623,10 @@ export default function DashboardPage() {
         setAnalysisTeam('All');
         setAnalysisCatalog('All');
         setAnalysisEvaluator('All');
+        setAnalysisEvaluator('All');
         setAnalysisEmployee('All');
+        setAnalysisDateFrom('');
+        setAnalysisDateTo('');
     };
 
     if (loading) {
@@ -485,7 +744,7 @@ export default function DashboardPage() {
                                     onChange={(e: SelectChangeEvent) => setSelectedCatalog(e.target.value)}
                                 >
                                     <MenuItem value="All">Alle</MenuItem>
-                                    {uniqueCatalogs.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+                                    {uniqueCatalogsGlobal.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
                                 </Select>
                             </FormControl>
                         </Grid>
@@ -527,7 +786,29 @@ export default function DashboardPage() {
                     <Paper elevation={2} sx={{ p: 2, mb: 4 }}>
                         <Typography variant="subtitle2" gutterBottom>Auswertungs-Filter</Typography>
                         <Grid container spacing={2} alignItems="center">
-                            <Grid item xs={12} md={3}>
+                            <Grid item xs={12} md={2}>
+                                <TextField
+                                    label="Zeitraum von"
+                                    type="date"
+                                    fullWidth
+                                    size="small"
+                                    InputLabelProps={{ shrink: true }}
+                                    value={analysisDateFrom}
+                                    onChange={(e) => setAnalysisDateFrom(e.target.value)}
+                                />
+                            </Grid>
+                            <Grid item xs={12} md={2}>
+                                <TextField
+                                    label="Zeitraum bis"
+                                    type="date"
+                                    fullWidth
+                                    size="small"
+                                    InputLabelProps={{ shrink: true }}
+                                    value={analysisDateTo}
+                                    onChange={(e) => setAnalysisDateTo(e.target.value)}
+                                />
+                            </Grid>
+                            <Grid item xs={12} md={2}>
                                 <FormControl fullWidth size="small">
                                     <InputLabel>Projekt</InputLabel>
                                     <Select
@@ -540,7 +821,7 @@ export default function DashboardPage() {
                                     </Select>
                                 </FormControl>
                             </Grid>
-                            <Grid item xs={12} md={3}>
+                            <Grid item xs={12} md={2}>
                                 <FormControl fullWidth size="small">
                                     <InputLabel>Kriterienkatalog</InputLabel>
                                     <Select
@@ -549,11 +830,11 @@ export default function DashboardPage() {
                                         onChange={(e: SelectChangeEvent) => setAnalysisCatalog(e.target.value)}
                                     >
                                         <MenuItem value="All">Alle</MenuItem>
-                                        {uniqueCatalogs.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+                                        {uniqueCatalogsAnalysis.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
                                     </Select>
                                 </FormControl>
                             </Grid>
-                            <Grid item xs={12} md={3}>
+                            <Grid item xs={12} md={2}>
                                 <FormControl fullWidth size="small">
                                     <InputLabel>Bewerter</InputLabel>
                                     <Select
@@ -566,7 +847,7 @@ export default function DashboardPage() {
                                     </Select>
                                 </FormControl>
                             </Grid>
-                            <Grid item xs={12} md={3}>
+                            <Grid item xs={12} md={2}>
                                 <FormControl fullWidth size="small">
                                     <InputLabel>Mitarbeiter</InputLabel>
                                     <Select
@@ -585,7 +866,45 @@ export default function DashboardPage() {
                         </Grid>
                     </Paper>
 
+
+
                     <Grid container spacing={4}>
+                        {/* 1. Quality Trend Chart */}
+                        <Grid item xs={12}>
+                            <Paper elevation={2} sx={{ p: 3 }}>
+                                <Typography variant="h6" gutterBottom>Qualitäts-Trend (Durchschnittsscore)</Typography>
+                                <Box sx={{ height: 300, width: '100%' }}>
+                                    <ResponsiveContainer>
+                                        <LineChart data={analysisTrendData}>
+                                            <CartesianGrid strokeDasharray="3 3" />
+                                            <XAxis
+                                                dataKey="formattedDate"
+                                                tick={{ fontSize: 12 }}
+                                                interval="preserveStartEnd"
+                                            />
+                                            <YAxis
+                                                domain={[0, 100]}
+                                                tick={{ fontSize: 12 }}
+                                                label={{ value: 'Score %', angle: -90, position: 'insideLeft' }}
+                                            />
+                                            <Tooltip
+                                                contentStyle={{ backgroundColor: '#fff', borderRadius: 8, border: '1px solid #ccc' }}
+                                                labelStyle={{ fontWeight: 'bold' }}
+                                            />
+                                            <Line
+                                                type="monotone"
+                                                dataKey="score"
+                                                stroke="#2196f3"
+                                                strokeWidth={3}
+                                                dot={{ r: 4, fill: '#2196f3' }}
+                                                activeDot={{ r: 6 }}
+                                                name="Ø Score"
+                                            />
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                </Box>
+                            </Paper>
+                        </Grid>
                         <Grid item xs={12} md={6}>
                             <Paper elevation={2} sx={{ p: 3, height: '100%' }}>
                                 <Typography variant="h6" gutterBottom>Verteilung der Bewertungen</Typography>
@@ -610,7 +929,7 @@ export default function DashboardPage() {
                             <Paper elevation={2} sx={{ p: 3, height: '100%' }}>
                                 <Typography variant="h6" gutterBottom>Stärken-/Schwächen-Profil (Auswahl)</Typography>
                                 <Typography variant="caption" color="textSecondary" display="block" mb={2}>
-                                    Durchschnittliche Performance pro Kompetenzfeld (Simuliert)
+                                    Durchschnittliche Performance pro Kompetenzfeld (Real)
                                 </Typography>
                                 <Box height={300}>
                                     <ResponsiveContainer width="100%" height="100%">
@@ -625,6 +944,42 @@ export default function DashboardPage() {
                                 </Box>
                             </Paper>
                         </Grid>
+                        {analysisData.questions && analysisData.questions.length > 0 ? (
+                            <Grid item xs={12}>
+                                <Paper elevation={2} sx={{ p: 3 }}>
+                                    <Typography variant="h6" gutterBottom>Detail-Analyse: Durchschnitt pro Frage</Typography>
+                                    <Typography variant="body2" color="textSecondary" mb={2}>
+                                        Filterung aktiv: {analysisTeam !== 'All' ? analysisTeam : 'Alle Projekte'} / {analysisCatalog !== 'All' ? analysisCatalog : 'Alle Kataloge'}
+                                    </Typography>
+                                    <Box height={400}>
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart
+                                                data={analysisData.questions}
+                                                layout="vertical"
+                                                margin={{ top: 5, right: 30, left: 200, bottom: 5 }}
+                                            >
+                                                <CartesianGrid strokeDasharray="3 3" />
+                                                <XAxis type="number" domain={[0, 100]} />
+                                                <YAxis dataKey="question" type="category" width={180} tick={{ fontSize: 11 }} />
+                                                <Tooltip />
+                                                <Bar dataKey="avg" name="Ø Prozent" fill="#8884d8" barSize={20} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </Box>
+                                </Paper>
+                            </Grid>
+                        ) : (
+                            (analysisTeam !== 'All' || analysisCatalog !== 'All') && (
+                                <Grid item xs={12}>
+                                    <Alert severity="warning">
+                                        <Typography variant="subtitle2">Keine Fragen-Daten verfügbar</Typography>
+                                        Möglicherweise fehlen die Katalog-Definitionen für die gefilterten Bewertungen.
+                                        Ohne diese Definitionen können die Fragen nicht identifiziert und ausgewertet werden.
+                                        Bitte prüfen Sie unter "Einstellungen" -&gt; "Kategorie-Mapping" die Liste der fehlenden Kataloge.
+                                    </Alert>
+                                </Grid>
+                            )
+                        )}
                         <Grid item xs={12}>
                             <Paper elevation={1} sx={{ p: 2, bgcolor: '#fff3cd' }}>
                                 <Typography variant="body2" color="black">
@@ -634,236 +989,243 @@ export default function DashboardPage() {
                         </Grid>
                     </Grid>
                 </Box>
-            )}
+            )
+            }
 
-            {isStatsTabActive && (
-                <Paper elevation={2} sx={{ p: 2, mb: 4 }}>
-                    <Typography variant="subtitle2" gutterBottom>Statistik-Filter</Typography>
-                    <Grid container spacing={2} alignItems="center">
-                        <Grid item xs={12} md={3}>
-                            <FormControl fullWidth size="small">
-                                <InputLabel>Projekt</InputLabel>
-                                <Select
-                                    value={statsTeam}
-                                    label="Projekt"
-                                    onChange={(e: SelectChangeEvent) => setStatsTeam(e.target.value)}
-                                >
-                                    <MenuItem value="All">Alle</MenuItem>
-                                    {uniqueTeams.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
-                                </Select>
-                            </FormControl>
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                            <FormControl fullWidth size="small">
-                                <InputLabel>Kriterienkatalog</InputLabel>
-                                <Select
-                                    value={statsCatalog}
-                                    label="Kriterienkatalog"
-                                    onChange={(e: SelectChangeEvent) => setStatsCatalog(e.target.value)}
-                                >
-                                    <MenuItem value="All">Alle</MenuItem>
-                                    {uniqueCatalogs.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
-                                </Select>
-                            </FormControl>
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                            <FormControl fullWidth size="small">
-                                <InputLabel>Bewerter</InputLabel>
-                                <Select
-                                    value={statsEvaluator}
-                                    label="Bewerter"
-                                    onChange={(e: SelectChangeEvent) => setStatsEvaluator(e.target.value)}
-                                >
-                                    <MenuItem value="All">Alle</MenuItem>
-                                    {uniqueEvaluators.map(b => <MenuItem key={b} value={b}>{b}</MenuItem>)}
-                                </Select>
-                            </FormControl>
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                            <FormControl fullWidth size="small">
-                                <InputLabel>Mitarbeiter</InputLabel>
-                                <Select
-                                    value={statsEmployee}
-                                    label="Mitarbeiter"
-                                    onChange={(e: SelectChangeEvent) => setStatsEmployee(e.target.value)}
-                                >
-                                    <MenuItem value="All">Alle</MenuItem>
-                                    {uniqueEmployees.map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
-                                </Select>
-                            </FormControl>
-                        </Grid>
-                        <Grid item xs={12} md={12} display="flex" justifyContent="flex-end">
-                            <Button variant="text" onClick={resetStatsFilters}>Filter zurücksetzen</Button>
-                        </Grid>
-                    </Grid>
-
-                    <Box mt={4}>
-                        <Typography variant="h6" gutterBottom>Gesamtübersicht</Typography>
-                        <Paper elevation={1} sx={{ p: 2, backgroundColor: '#f5f5f5', mb: 4 }}>
-                            <Grid container spacing={3}>
-                                <Grid item xs={6} md={2}>
-                                    <Typography variant="body2" color="textSecondary">Anzahl Bewertungen</Typography>
-                                    <Typography variant="h5">{statsMetrics.count}</Typography>
-                                </Grid>
-                                <Grid item xs={6} md={2}>
-                                    <Typography variant="body2" color="textSecondary">Durchschnitt</Typography>
-                                    <Typography variant="h5" color={parseFloat(statsMetrics.avg) >= 90 ? 'success.main' : parseFloat(statsMetrics.avg) >= 70 ? 'warning.main' : 'error.main'}>
-                                        {statsMetrics.avg}%
-                                    </Typography>
-                                </Grid>
-                                <Grid item xs={6} md={3}>
-                                    <Typography variant="body2" color="textSecondary">Älteste Bewertung</Typography>
-                                    <Typography variant="body1">{statsMetrics.oldest}</Typography>
-                                </Grid>
-                                <Grid item xs={6} md={3}>
-                                    <Typography variant="body2" color="textSecondary">Jüngste Bewertung</Typography>
-                                    <Typography variant="body1">{statsMetrics.newest}</Typography>
-                                </Grid>
-                                <Grid item xs={12} md={2}>
-                                    <Typography variant="body2" color="textSecondary">Tage seit letzter Bew.</Typography>
-                                    <Typography variant="h5">{statsMetrics.daysSince}</Typography>
-                                </Grid>
+            {
+                isStatsTabActive && (
+                    <Paper elevation={2} sx={{ p: 2, mb: 4 }}>
+                        <Typography variant="subtitle2" gutterBottom>Statistik-Filter</Typography>
+                        <Grid container spacing={2} alignItems="center">
+                            <Grid item xs={12} md={3}>
+                                <FormControl fullWidth size="small">
+                                    <InputLabel>Projekt</InputLabel>
+                                    <Select
+                                        value={statsTeam}
+                                        label="Projekt"
+                                        onChange={(e: SelectChangeEvent) => setStatsTeam(e.target.value)}
+                                    >
+                                        <MenuItem value="All">Alle</MenuItem>
+                                        {uniqueTeams.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
+                                    </Select>
+                                </FormControl>
                             </Grid>
-                        </Paper>
+                            <Grid item xs={12} md={3}>
+                                <FormControl fullWidth size="small">
+                                    <InputLabel>Kriterienkatalog</InputLabel>
+                                    <Select
+                                        value={statsCatalog}
+                                        label="Kriterienkatalog"
+                                        onChange={(e: SelectChangeEvent) => setStatsCatalog(e.target.value)}
+                                    >
+                                        <MenuItem value="All">Alle</MenuItem>
+                                        {uniqueCatalogs.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+                                    </Select>
+                                </FormControl>
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                                <FormControl fullWidth size="small">
+                                    <InputLabel>Bewerter</InputLabel>
+                                    <Select
+                                        value={statsEvaluator}
+                                        label="Bewerter"
+                                        onChange={(e: SelectChangeEvent) => setStatsEvaluator(e.target.value)}
+                                    >
+                                        <MenuItem value="All">Alle</MenuItem>
+                                        {uniqueEvaluators.map(b => <MenuItem key={b} value={b}>{b}</MenuItem>)}
+                                    </Select>
+                                </FormControl>
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                                <FormControl fullWidth size="small">
+                                    <InputLabel>Mitarbeiter</InputLabel>
+                                    <Select
+                                        value={statsEmployee}
+                                        label="Mitarbeiter"
+                                        onChange={(e: SelectChangeEvent) => setStatsEmployee(e.target.value)}
+                                    >
+                                        <MenuItem value="All">Alle</MenuItem>
+                                        {uniqueEmployees.map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
+                                    </Select>
+                                </FormControl>
+                            </Grid>
+                            <Grid item xs={12} md={12} display="flex" justifyContent="flex-end">
+                                <Button variant="text" onClick={resetStatsFilters}>Filter zurücksetzen</Button>
+                            </Grid>
+                        </Grid>
 
-                        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                            <Typography variant="h6">Detaillierte Auswertung</Typography>
-                            <ToggleButtonGroup
-                                color="primary"
-                                value={groupingMode}
-                                exclusive
-                                onChange={(_e, newMode) => { if (newMode) setGroupingMode(newMode); }}
-                                size="small"
-                            >
-                                <ToggleButton value="project">Projekt/Team</ToggleButton>
-                                <ToggleButton value="evaluator">Bewerter</ToggleButton>
-                                <ToggleButton value="employee">Mitarbeiter</ToggleButton>
-                            </ToggleButtonGroup>
-                        </Box>
+                        <Box mt={4}>
+                            <Typography variant="h6" gutterBottom>Gesamtübersicht</Typography>
+                            <Paper elevation={1} sx={{ p: 2, backgroundColor: '#f5f5f5', mb: 4 }}>
+                                <Grid container spacing={3}>
+                                    <Grid item xs={6} md={2}>
+                                        <Typography variant="body2" color="textSecondary">Anzahl Bewertungen</Typography>
+                                        <Typography variant="h5">{statsMetrics.count}</Typography>
+                                    </Grid>
+                                    <Grid item xs={6} md={2}>
+                                        <Typography variant="body2" color="textSecondary">Durchschnitt</Typography>
+                                        <Typography variant="h5" color={parseFloat(statsMetrics.avg) >= 90 ? 'success.main' : parseFloat(statsMetrics.avg) >= 70 ? 'warning.main' : 'error.main'}>
+                                            {statsMetrics.avg}%
+                                        </Typography>
+                                    </Grid>
+                                    <Grid item xs={6} md={3}>
+                                        <Typography variant="body2" color="textSecondary">Älteste Bewertung</Typography>
+                                        <Typography variant="body1">{statsMetrics.oldest}</Typography>
+                                    </Grid>
+                                    <Grid item xs={6} md={3}>
+                                        <Typography variant="body2" color="textSecondary">Jüngste Bewertung</Typography>
+                                        <Typography variant="body1">{statsMetrics.newest}</Typography>
+                                    </Grid>
+                                    <Grid item xs={12} md={2}>
+                                        <Typography variant="body2" color="textSecondary">Tage seit letzter Bew.</Typography>
+                                        <Typography variant="h5">{statsMetrics.daysSince}</Typography>
+                                    </Grid>
+                                </Grid>
+                            </Paper>
 
-                        <TableContainer component={Paper} variant="outlined">
-                            <Table size="small">
-                                <TableHead>
-                                    <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
-                                        <TableHeaderCell id="key" label={groupingMode === 'project' ? 'Projekt/Team' : groupingMode === 'evaluator' ? 'Bewerter' : 'Mitarbeiter'} />
-                                        <TableHeaderCell id="count" label="Anzahl" numeric />
-                                        <TableHeaderCell id="avg" label="Ø Score" numeric />
-                                        <TableHeaderCell id="newest" label="Letzte Bew." numeric />
-                                        <TableHeaderCell id="daysSince" label="Tage her" numeric />
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    {groupedStatsData.length > 0 ? groupedStatsData.map((row) => (
-                                        <TableRow key={row.key}>
-                                            <TableCell>{row.key}</TableCell>
-                                            <TableCell align="right">{row.count}</TableCell>
-                                            <TableCell align="right">
-                                                <Typography color={parseFloat(row.avg) >= 90 ? 'success.main' : parseFloat(row.avg) >= 70 ? 'warning.main' : 'error.main'} variant="body2" fontWeight="bold">
-                                                    {row.avg}%
-                                                </Typography>
-                                            </TableCell>
-                                            <TableCell align="right">{row.newest}</TableCell>
-                                            <TableCell align="right">{row.daysSince}</TableCell>
-                                        </TableRow>
-                                    )) : (
-                                        <TableRow>
-                                            <TableCell colSpan={5} align="center">Keine Daten verfügbar</TableCell>
-                                        </TableRow>
-                                    )}
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
-                    </Box>
-                </Paper>
-            )}
-
-            {!isStatsTabActive && !isAnalysisTabActive && (
-                <Grid container spacing={3} mb={4}>
-                    <Grid item xs={12} md={4}>
-                        <Card elevation={2}>
-                            <CardContent>
-                                <Typography color="textSecondary" gutterBottom>
-                                    Anzahl Bewertungen
-                                </Typography>
-                                <Typography variant="h3" color="primary">
-                                    {currentMetrics.count}
-                                </Typography>
-                            </CardContent>
-                        </Card>
-                    </Grid>
-                    <Grid item xs={12} md={4}>
-                        <Card elevation={2}>
-                            <CardContent>
-                                <Typography color="textSecondary" gutterBottom>
-                                    Durchschnitt (Gesamt)
-                                </Typography>
-                                <Typography variant="h3" sx={{ color: currentMetrics.avgScore >= 90 ? 'success.main' : currentMetrics.avgScore >= 70 ? 'warning.main' : 'error.main' }}>
-                                    {currentMetrics.avgScore}%
-                                </Typography>
-                            </CardContent>
-                        </Card>
-                    </Grid>
-                    <Grid item xs={12} md={4}>
-                        <Card elevation={2}>
-                            <CardContent>
-                                <Typography color="textSecondary" gutterBottom>
-                                    Letzte Aktivität
-                                </Typography>
-                                <Typography variant="h5">
-                                    {currentMetrics.lastDate || '-'}
-                                </Typography>
-                            </CardContent>
-                        </Card>
-                    </Grid>
-                </Grid>
-            )}
-
-            {!isStatsTabActive && !isAnalysisTabActive && currentMetrics.count > 0 ? (
-                <Grid container spacing={3}>
-                    <Grid item xs={12} lg={8}>
-                        <Paper elevation={2} sx={{ p: 3 }}>
-                            <Typography variant="h6" gutterBottom>
-                                {getChartTitle()}
-                            </Typography>
-                            <Box height={300}>
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={currentMetrics.trendData}>
-                                        <CartesianGrid strokeDasharray="3 3" />
-                                        <XAxis dataKey="date" />
-                                        <YAxis domain={[0, 100]} />
-                                        <Tooltip />
-                                        <Line
-                                            type="monotone"
-                                            dataKey="score"
-                                            stroke="#8d0808"
-                                            strokeWidth={2}
-                                            activeDot={{ r: 8 }}
-                                            name="Prozentpunkte"
-                                        />
-                                    </LineChart>
-                                </ResponsiveContainer>
+                            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                                <Typography variant="h6">Detaillierte Auswertung</Typography>
+                                <ToggleButtonGroup
+                                    color="primary"
+                                    value={groupingMode}
+                                    exclusive
+                                    onChange={(_e, newMode) => { if (newMode) setGroupingMode(newMode); }}
+                                    size="small"
+                                >
+                                    <ToggleButton value="project">Projekt/Team</ToggleButton>
+                                    <ToggleButton value="evaluator">Bewerter</ToggleButton>
+                                    <ToggleButton value="employee">Mitarbeiter</ToggleButton>
+                                </ToggleButtonGroup>
                             </Box>
-                        </Paper>
-                    </Grid>
 
-                    <Grid item xs={12} lg={4}>
-                        <Paper elevation={2} sx={{ p: 3, height: '100%' }}>
-                            <Typography variant="h6" gutterBottom>
-                                Hinweise
-                            </Typography>
-                            <Typography variant="body2" paragraph>
-                                {activeTab === 0 && "Hier sehen Sie Ihre persönliche Leistungsentwicklung basierend auf den erhaltenen Bewertungen."}
-                                {activeTab === 1 && "Hier sehen Sie die Statistiken aller Bewertungen, die Sie als Bewerter durchgeführt haben."}
-                                {activeTab === 2 && "Übersicht über alle Bewertungen im Unternehmen."}
-                            </Typography>
-                        </Paper>
+                            <TableContainer component={Paper} variant="outlined">
+                                <Table size="small">
+                                    <TableHead>
+                                        <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                                            <TableHeaderCell id="key" label={groupingMode === 'project' ? 'Projekt/Team' : groupingMode === 'evaluator' ? 'Bewerter' : 'Mitarbeiter'} />
+                                            <TableHeaderCell id="count" label="Anzahl" numeric />
+                                            <TableHeaderCell id="avg" label="Ø Score" numeric />
+                                            <TableHeaderCell id="newest" label="Letzte Bew." numeric />
+                                            <TableHeaderCell id="daysSince" label="Tage her" numeric />
+                                        </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                        {groupedStatsData.length > 0 ? groupedStatsData.map((row) => (
+                                            <TableRow key={row.key}>
+                                                <TableCell>{row.key}</TableCell>
+                                                <TableCell align="right">{row.count}</TableCell>
+                                                <TableCell align="right">
+                                                    <Typography color={parseFloat(row.avg) >= 90 ? 'success.main' : parseFloat(row.avg) >= 70 ? 'warning.main' : 'error.main'} variant="body2" fontWeight="bold">
+                                                        {row.avg}%
+                                                    </Typography>
+                                                </TableCell>
+                                                <TableCell align="right">{row.newest}</TableCell>
+                                                <TableCell align="right">{row.daysSince}</TableCell>
+                                            </TableRow>
+                                        )) : (
+                                            <TableRow>
+                                                <TableCell colSpan={5} align="center">Keine Daten verfügbar</TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </TableContainer>
+                        </Box>
+                    </Paper>
+                )
+            }
+
+            {
+                !isStatsTabActive && !isAnalysisTabActive && (
+                    <Grid container spacing={3} mb={4}>
+                        <Grid item xs={12} md={4}>
+                            <Card elevation={2}>
+                                <CardContent>
+                                    <Typography color="textSecondary" gutterBottom>
+                                        Anzahl Bewertungen
+                                    </Typography>
+                                    <Typography variant="h3" color="primary">
+                                        {currentMetrics.count}
+                                    </Typography>
+                                </CardContent>
+                            </Card>
+                        </Grid>
+                        <Grid item xs={12} md={4}>
+                            <Card elevation={2}>
+                                <CardContent>
+                                    <Typography color="textSecondary" gutterBottom>
+                                        Durchschnitt (Gesamt)
+                                    </Typography>
+                                    <Typography variant="h3" sx={{ color: currentMetrics.avgScore >= 90 ? 'success.main' : currentMetrics.avgScore >= 70 ? 'warning.main' : 'error.main' }}>
+                                        {currentMetrics.avgScore}%
+                                    </Typography>
+                                </CardContent>
+                            </Card>
+                        </Grid>
+                        <Grid item xs={12} md={4}>
+                            <Card elevation={2}>
+                                <CardContent>
+                                    <Typography color="textSecondary" gutterBottom>
+                                        Letzte Aktivität
+                                    </Typography>
+                                    <Typography variant="h5">
+                                        {currentMetrics.lastDate || '-'}
+                                    </Typography>
+                                </CardContent>
+                            </Card>
+                        </Grid>
                     </Grid>
-                </Grid>
-            ) : (!isStatsTabActive && !isAnalysisTabActive) ? (
-                <Paper sx={{ p: 4, textAlign: 'center' }}>
-                    <Typography color="textSecondary">Keine Daten vorhanden.</Typography>
-                </Paper>
-            ) : null}
-        </Box>
+                )
+            }
+
+            {
+                !isStatsTabActive && !isAnalysisTabActive && currentMetrics.count > 0 ? (
+                    <Grid container spacing={3}>
+                        <Grid item xs={12} lg={8}>
+                            <Paper elevation={2} sx={{ p: 3 }}>
+                                <Typography variant="h6" gutterBottom>
+                                    {getChartTitle()}
+                                </Typography>
+                                <Box height={300}>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <LineChart data={currentMetrics.trendData}>
+                                            <CartesianGrid strokeDasharray="3 3" />
+                                            <XAxis dataKey="date" />
+                                            <YAxis domain={[0, 100]} />
+                                            <Tooltip />
+                                            <Line
+                                                type="monotone"
+                                                dataKey="score"
+                                                stroke="#8d0808"
+                                                strokeWidth={2}
+                                                activeDot={{ r: 8 }}
+                                                name="Prozentpunkte"
+                                            />
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                </Box>
+                            </Paper>
+                        </Grid>
+
+                        <Grid item xs={12} lg={4}>
+                            <Paper elevation={2} sx={{ p: 3, height: '100%' }}>
+                                <Typography variant="h6" gutterBottom>
+                                    Hinweise
+                                </Typography>
+                                <Typography variant="body2" paragraph>
+                                    {activeTab === 0 && "Hier sehen Sie Ihre persönliche Leistungsentwicklung basierend auf den erhaltenen Bewertungen."}
+                                    {activeTab === 1 && "Hier sehen Sie die Statistiken aller Bewertungen, die Sie als Bewerter durchgeführt haben."}
+                                    {activeTab === 2 && "Übersicht über alle Bewertungen im Unternehmen."}
+                                </Typography>
+                            </Paper>
+                        </Grid>
+                    </Grid>
+                ) : (!isStatsTabActive && !isAnalysisTabActive) ? (
+                    <Paper sx={{ p: 4, textAlign: 'center' }}>
+                        <Typography color="textSecondary">Keine Daten vorhanden.</Typography>
+                    </Paper>
+                ) : null
+            }
+        </Box >
     );
 }

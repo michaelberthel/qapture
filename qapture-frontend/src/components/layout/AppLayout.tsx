@@ -29,7 +29,7 @@ import {
     Security as SecurityIcon,
     ExitToApp as ExitToAppIcon
 } from '@mui/icons-material';
-import { useNavigate, useLocation, Outlet } from 'react-router-dom';
+import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Alert } from '@mui/material';
 
@@ -78,6 +78,8 @@ export default function AppLayout() {
         { text: 'Meine Beurteilungen', icon: <AssessmentIcon />, path: '/my-evaluations', roles: ['Mitarbeiter'] },
         { text: 'Teams', icon: <PeopleIcon />, path: '/teams', roles: ['Admin', 'ProjektQM', 'ProjektKoordinator'] },
         { text: 'Verwaltung', icon: <SettingsIcon />, path: '/admin', roles: ['Admin'] },
+        { text: 'Kriterien-Inventar', icon: <ListIcon />, path: '/admin/inventory', roles: ['Admin'] },
+        { text: 'Kategorie-Mapping', icon: <AssessmentIcon />, path: '/admin/maps', roles: ['Admin'] },
     ];
 
     const filteredMenuItems = menuItems.filter(item =>
@@ -196,7 +198,8 @@ export default function AppLayout() {
                         {user?.role === 'Admin' && !isImpersonating && (
                             <>
                                 <Divider />
-                                <MenuItem onClick={() => setImpersonateDialogOpen(true)}>
+
+                                <MenuItem onClick={() => { handleProfileMenuClose(); setImpersonateDialogOpen(true); }}>
                                     <ListItemIcon>
                                         <SecurityIcon fontSize="small" />
                                     </ListItemIcon>

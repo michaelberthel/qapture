@@ -77,7 +77,14 @@ export default function EvaluationHistoryPage() {
 
                 if (response.ok) {
                     const data = await response.json();
-                    setEvaluations(data);
+                    if (data && data._debug && Array.isArray(data.data)) {
+                        setEvaluations(data.data);
+                    } else if (Array.isArray(data)) {
+                        setEvaluations(data);
+                    } else {
+                        setEvaluations([]);
+                        console.error('Unexpected API response structure:', data);
+                    }
                 } else {
                     console.error('Failed to fetch evaluations');
                 }

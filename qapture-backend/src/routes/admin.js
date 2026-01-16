@@ -10,7 +10,9 @@ const getCollections = async () => {
     return {
         catalogs: db.collection('catalogs'),
         customTeams: db.collection('custom_teams'),
-        employees: db.collection('employee_overrides') // Reusing overrides for custom assignments logic if needed
+        employees: db.collection('employee_overrides'),
+        dimensions: db.collection('dimensions'),
+        categoryMappings: db.collection('category_mappings')
     };
 };
 
@@ -42,6 +44,7 @@ router.post('/catalogs', async (req, res) => {
             name,
             projects: projects || [], // Array of project/team names
             jsonData, // The SurveyJS JSON object (or string? usually object in DB)
+            isActive: true, // Default active
             createdAt: new Date(),
             updatedAt: new Date()
         };
@@ -59,7 +62,7 @@ router.put('/catalogs/:id', async (req, res) => {
     try {
         const { catalogs } = await getCollections();
         const { id } = req.params;
-        const { name, projects, jsonData } = req.body;
+        const { name, projects, jsonData, isActive } = req.body;
 
         const updateDoc = {
             $set: {
@@ -70,6 +73,7 @@ router.put('/catalogs/:id', async (req, res) => {
         if (name) updateDoc.$set.name = name;
         if (projects) updateDoc.$set.projects = projects;
         if (jsonData) updateDoc.$set.jsonData = jsonData;
+        if (typeof isActive === 'boolean') updateDoc.$set.isActive = isActive;
 
         const result = await catalogs.findOneAndUpdate(
             { _id: new ObjectId(id) },
@@ -104,6 +108,83 @@ router.delete('/catalogs/:id', async (req, res) => {
     } catch (error) {
         console.error('Error deleting catalog:', error);
         res.status(500).json({ error: 'Failed to delete catalog' });
+    }
+});
+
+// POST /api/admin/catalogs/:id/duplicate - Duplicate catalog
+router.post('/catalogs/:id/duplicate', async (req, res) => {
+    try {
+        const { catalogs } = await getCollections();
+        const { id } = req.params;
+        const { newName } = req.body;
+
+        const original = await catalogs.findOne({ _id: new ObjectId(id) });
+        if (!original) {
+            return res.status(404).json({ error: 'Original catalog not found' });
+        }
+
+        const newCatalog = {
+            name: newName || `${original.name} (Kopie)`,
+            projects: original.projects || [], // Keep assignments? Yes, per plan.
+            jsonData: original.jsonData,
+            isActive: original.isActive !== undefined ? original.isActive : true,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        };
+
+        const result = await catalogs.insertOne(newCatalog);
+        res.status(201).json({ ...newCatalog, _id: result.insertedId });
+
+    } catch (error) {
+        console.error('Error duplicating catalog:', error);
+        res.status(500).json({ error: 'Failed to duplicate catalog' });
+    }
+});
+
+// POST /api/admin/catalogs/:id/version - Create new version
+router.post('/catalogs/:id/version', async (req, res) => {
+    try {
+        const { catalogs } = await getCollections();
+        const { id } = req.params;
+
+        // 1. Find original
+        const original = await catalogs.findOne({ _id: new ObjectId(id) });
+        if (!original) {
+            return res.status(404).json({ error: 'Original catalog not found' });
+        }
+
+        // 2. Archive original (set isActive: false)
+        await catalogs.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { isActive: false, updatedAt: new Date() } }
+        );
+
+        // 3. Create new version
+        const currentVersion = original.version || 1;
+        const newVersion = currentVersion + 1;
+
+        // Handle name - remove existing " vX" suffix if present to avoid "Name v1 v2"
+        let baseName = original.name;
+        // Regex to strip " v[number]" from end
+        baseName = baseName.replace(/ v\d+$/, '');
+
+        const newCatalog = {
+            ...original,
+            _id: undefined, // Let Mongo generate new ID
+            name: `${baseName} v${newVersion}`,
+            version: newVersion,
+            rootId: original.rootId || original._id, // Track lineage
+            isActive: true, // New version is active
+            createdAt: new Date(),
+            updatedAt: new Date()
+        };
+
+        const result = await catalogs.insertOne(newCatalog);
+        res.status(201).json({ ...newCatalog, _id: result.insertedId });
+
+    } catch (error) {
+        console.error('Error creating new version:', error);
+        res.status(500).json({ error: 'Failed to create new version' });
     }
 });
 
@@ -215,5 +296,150 @@ router.delete('/teams/:id', async (req, res) => {
     }
 });
 
+
+// --- Category Mapping & Dimensions ---
+
+// GET /api/admin/dimensions - List all dimensions
+router.get('/dimensions', async (req, res) => {
+    try {
+        const { dimensions } = await getCollections();
+        const result = await dimensions.find({}).toArray();
+        res.json(result);
+    } catch (error) {
+        console.error('Error fetching dimensions:', error);
+        res.status(500).json({ error: 'Failed to fetch dimensions' });
+    }
+});
+
+// POST /api/admin/dimensions - Create/Update dimension
+router.post('/dimensions', async (req, res) => {
+    try {
+        const { dimensions } = await getCollections();
+        const { id, name, color } = req.body;
+
+        if (!name) {
+            return res.status(400).json({ error: 'Name is required' });
+        }
+
+        if (id) {
+            // Update
+            const result = await dimensions.findOneAndUpdate(
+                { _id: new ObjectId(id) },
+                { $set: { name, color, updatedAt: new Date() } },
+                { returnDocument: 'after' }
+            );
+            return res.json(result);
+        } else {
+            // Create
+            const newDim = {
+                name,
+                color: color || '#8884d8',
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+            const result = await dimensions.insertOne(newDim);
+            return res.status(201).json({ ...newDim, _id: result.insertedId });
+        }
+    } catch (error) {
+        console.error('Error saving dimension:', error);
+        res.status(500).json({ error: 'Failed to save dimension' });
+    }
+});
+
+// DELETE /api/admin/dimensions/:id
+router.delete('/dimensions/:id', async (req, res) => {
+    try {
+        const { dimensions } = await getCollections();
+        const { id } = req.params;
+        await dimensions.deleteOne({ _id: new ObjectId(id) });
+        res.json({ message: 'Dimension deleted' });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed' });
+    }
+});
+
+
+// GET /api/admin/mappings - List all mappings
+router.get('/mappings', async (req, res) => {
+    try {
+        const { categoryMappings } = await getCollections();
+        const result = await categoryMappings.find({}).toArray();
+        res.json(result);
+    } catch (error) {
+        console.error('Error fetching mappings:', error);
+        res.status(500).json({ error: 'Failed to fetch mappings' });
+    }
+});
+
+// POST /api/admin/mappings - Update Mapping
+router.post('/mappings', async (req, res) => {
+    try {
+        const { categoryMappings } = await getCollections();
+        const { categoryName, dimensionId } = req.body;
+
+        if (!categoryName) return res.status(400).json({ error: 'Category Name Required' });
+
+        const updateDoc = {
+            categoryName,
+            dimensionId, // can be null to unmap
+            updatedAt: new Date()
+        };
+
+        // Upsert by categoryName
+        const result = await categoryMappings.findOneAndUpdate(
+            { categoryName },
+            { $set: updateDoc },
+            { upsert: true, returnDocument: 'after' }
+        );
+
+        res.json(result);
+    } catch (error) {
+        console.error('Error saving mapping:', error);
+        res.status(500).json({ error: 'Failed to save mapping' });
+    }
+});
+
+// --- Analysis Tools ---
+
+// GET /api/admin/analysis/missing-catalogs
+router.get('/analysis/missing-catalogs', async (req, res) => {
+    try {
+        const { catalogs } = await getCollections();
+        const db = await connectToMongo();
+        const evaluations = db.collection('mongosurveys');
+
+        // 1. Get all catalog names currently in DB
+        const allCatalogs = await catalogs.find({}, { projection: { name: 1 } }).toArray();
+        const knownCatalogNames = new Set(allCatalogs.map(c => c.name));
+
+        // 2. Get all catalog names referenced in evaluations
+        // We use aggregation to be efficient
+        const referencedCatalogs = await evaluations.aggregate([
+            {
+                $group: {
+                    _id: "$surveyresults.Kriterienkatalog",
+                    count: { $sum: 1 }
+                }
+            },
+            {
+                $match: {
+                    _id: { $ne: null }
+                }
+            }
+        ]).toArray();
+
+        // 3. Find missing
+        const missing = referencedCatalogs
+            .filter(ref => !knownCatalogNames.has(ref._id))
+            .map(ref => ({ name: ref._id, count: ref.count }))
+            .sort((a, b) => b.count - a.count);
+
+        res.json(missing);
+
+    } catch (error) {
+        console.error('Error analyzing missing catalogs:', error);
+        res.status(500).json({ error: 'Analysis failed' });
+    }
+});
 
 export default router;

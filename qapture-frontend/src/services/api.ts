@@ -36,4 +36,26 @@ apiClient.interceptors.response.use(
     }
 );
 
+export const evaluationApi = {
+    getAll: async (user: any) => {
+        // Fallback to empty object if user is null (though should be handled by caller)
+        const safeUser = user || {};
+
+        console.log("API: Fetching evaluations for user:", safeUser.email, safeUser.role);
+
+        const response = await apiClient.get<any>('/evaluations', {
+            headers: {
+                'x-user-role': safeUser.role || '',
+                'x-user-email': safeUser.email || '',
+                'x-user-teams': JSON.stringify(safeUser.teams?.map((t: any) => t.team.name) || [])
+            }
+        });
+        if (response.data && response.data._debug) {
+            console.log("BACKEND DEBUG INFO:", response.data._debug);
+            return response.data.data;
+        }
+        return response.data;
+    },
+};
+
 export default apiClient;
