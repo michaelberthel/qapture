@@ -30,6 +30,7 @@ import {
     ExitToApp as ExitToAppIcon
 } from '@mui/icons-material';
 import { useLocation, useNavigate, Outlet } from 'react-router-dom';
+import Logo from '../../assets/logo.png';
 import { useAuth } from '../../hooks/useAuth';
 import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Alert } from '@mui/material';
 
@@ -90,7 +91,7 @@ export default function AppLayout() {
         <Box>
             <Toolbar>
                 <Box sx={{ p: 2, display: 'flex', justifyContent: 'center' }}>
-                    <img src="/src/assets/logo.png" alt="Qapture Logo" style={{ maxWidth: '100%', maxHeight: '160px' }} />
+                    <img src={Logo} alt="Qapture Logo" style={{ maxWidth: '100%', maxHeight: '160px' }} />
                 </Box>
             </Toolbar>
             <Divider />
