@@ -26,6 +26,26 @@ app.get('/health', (req, res) => {
     });
 });
 
+// DEBUG: DB Connection Check (Temporary)
+import { connectToMongo } from './services/mongo.js';
+app.get('/api/debug-connection', async (req, res) => {
+    try {
+        const db = await connectToMongo();
+        const collections = await db.listCollections().toArray();
+        const surveyCount = await db.collection('mongosurveys').countDocuments();
+
+        res.json({
+            node_env: process.env.NODE_ENV,
+            db_name: db.databaseName,
+            collections: collections.map(c => c.name),
+            survey_count: surveyCount,
+            full_uri_masked: process.env.MONGODB_ATLAS_URI ? '...' + process.env.MONGODB_ATLAS_URI.slice(-20) : 'undefined'
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message, stack: e.stack });
+    }
+});
+
 // API Routes
 app.use('/api/evaluations', evaluationRoutes);
 app.use('/api/employees', employeeRoutes);
