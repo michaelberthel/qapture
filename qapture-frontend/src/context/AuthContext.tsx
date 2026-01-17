@@ -61,8 +61,6 @@ const fetchPersonioUserData = async (email: string, baseUser: User): Promise<Use
     return updatedUser;
 };
 
-import { InteractionStatus } from '@azure/msal-browser';
-
 // ... imports ...
 
 export function AuthProvider({ children }: { children: ReactNode }) {
