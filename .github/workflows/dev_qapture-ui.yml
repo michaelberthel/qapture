@@ -1,0 +1,53 @@
+# Dev Workflow for Qapture Frontend
+name: Azure Static Web Apps CI/CD - Dev
+
+on:
+  push:
+    branches:
+      - dev
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches:
+      - dev
+
+jobs:
+  build_and_deploy_job:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+    runs-on: ubuntu-latest
+    name: Build and Deploy Job
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+          lfs: false
+      - name: Build And Deploy
+        id: builddeploy
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_DEV }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }} # Used for Github integrations (i.e. PR comments)
+          action: "upload"
+          ###### Repository/Build Configurations - These values can be configured to match your app requirements. ######
+          # For more information regarding Static Web App workflow configurations, please visit: https://aka.ms/swaworkflowconfig
+          app_location: "./qapture-frontend" # App source code path
+          api_location: "" # Api source code path - optional
+          output_location: "dist" # Built app content directory - optional
+          ###### End of Repository/Build Configurations ######
+        env:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_DEV }}
+          VITE_AZURE_TENANT_ID: "88b9f179-56c6-4b6e-a89f-7ec5613222c3"
+          VITE_AZURE_CLIENT_ID: "e2825573-4b60-4838-88fc-3805c03897c4"
+          VITE_API_URL: "https://qapture-api-dev.azurewebsites.net" # Updated to DEV backend
+          # VITE_REDIRECT_URI removed to let code fallback to window.location.origin
+
+  close_pull_request_job:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    name: Close Pull Request Job
+    steps:
+      - name: Close Pull Request
+        id: closepullrequest
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_DEV }}
+          action: "close"
