@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useMsal } from '@azure/msal-react';
-import { InteractionRequiredAuthError } from '@azure/msal-browser';
+import { InteractionRequiredAuthError, InteractionStatus } from '@azure/msal-browser';
 
 import { loginRequest } from '../config/msalConfig';
 import type { User } from '../types/user';
@@ -61,8 +61,12 @@ const fetchPersonioUserData = async (email: string, baseUser: User): Promise<Use
     return updatedUser;
 };
 
+import { InteractionStatus } from '@azure/msal-browser';
+
+// ... imports ...
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-    const { instance, accounts } = useMsal();
+    const { instance, accounts, inProgress } = useMsal();
     const [user, setUser] = useState<User | null>(null);
     const [originalUser, setOriginalUser] = useState<User | null>(null); // For impersonation
     const [isLoading, setIsLoading] = useState(true);
@@ -71,6 +75,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const activeAccount = accounts[0];
 
     useEffect(() => {
+        // Wait for MSAL to handle redirect/startup before deciding user state
+        if (inProgress !== InteractionStatus.None && !activeAccount) {
+            return;
+        }
+
         const initializeUser = async () => {
             if (activeAccount && !originalUser) { // Only initialize if not already impersonating
                 // Prevent login loop: Show loading immediately
@@ -94,13 +103,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 setUser(fullUser);
                 setIsLoading(false);
             } else if (!activeAccount && !originalUser) {
-                setUser(null);
-                setIsLoading(false);
+                // Only declare "not logged in" if MSAL is truly done
+                if (inProgress === InteractionStatus.None) {
+                    setUser(null);
+                    setIsLoading(false);
+                }
             }
         };
 
         initializeUser();
-    }, [activeAccount, originalUser]);
+    }, [activeAccount, originalUser, inProgress]);
 
     const getToken = async (): Promise<string | null> => {
         if (!activeAccount) return null;
