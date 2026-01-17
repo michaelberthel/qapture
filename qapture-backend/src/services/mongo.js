@@ -10,8 +10,8 @@ export async function connectToMongo() {
     try {
         client = new MongoClient(uri);
         await client.connect();
-        db = client.db('verbaqm'); // Database name is fixed as per analysis
-        console.log("Connected to MongoDB Atlas (Legacy)");
+        db = client.db(); // Uses database from connection URI
+        console.log(`Connected to MongoDB Atlas: ${db.databaseName}`);
         return db;
     } catch (error) {
         console.error("MongoDB Connection Error:", error);
